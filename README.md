@@ -1,18 +1,18 @@
 # EuropeanVectorStore
 
-RAG pipeline 100% souverain — zéro API cloud, zéro fuite de données.
+RAG pipeline 100% souverain -zéro API cloud, zéro fuite de données.
 
 Conçu pour tourner sur un VPS européen. Toutes les données restent sur votre infrastructure.
 
 ## Pourquoi la souveraineté des données ?
 
-Aujourd'hui, la majorité des solutions RAG (Retrieval-Augmented Generation) reposent sur des services cloud américains : LlamaParse pour l'extraction, OpenAI pour les embeddings, Pinecone ou Weaviate pour le stockage vectoriel. **Chaque document que vous envoyez à ces services transite par des serveurs soumis au [CLOUD Act](https://en.wikipedia.org/wiki/CLOUD_Act)**, une loi fédérale américaine qui permet aux autorités US d'accéder aux données stockées par des entreprises américaines — même si les serveurs sont physiquement en Europe.
+Aujourd'hui, la majorité des solutions RAG (Retrieval-Augmented Generation) reposent sur des services cloud américains : LlamaParse pour l'extraction, OpenAI pour les embeddings, Pinecone ou Weaviate pour le stockage vectoriel. **Chaque document que vous envoyez à ces services transite par des serveurs soumis au [CLOUD Act](https://en.wikipedia.org/wiki/CLOUD_Act)**, une loi fédérale américaine qui permet aux autorités US d'accéder aux données stockées par des entreprises américaines -même si les serveurs sont physiquement en Europe.
 
 Pour une entreprise suisse ou européenne, cela pose un problème fondamental :
 
-- **Conformité légale** — La LPD (Loi fédérale sur la protection des données, Suisse) et le RGPD (UE) exigent un contrôle strict sur le transfert de données personnelles hors de l'espace européen. Utiliser OpenAI ou Pinecone pour traiter des documents internes peut constituer une violation.
-- **Confidentialité** — Des documents juridiques, financiers, médicaux ou stratégiques envoyés à un service cloud US sont potentiellement accessibles à des tiers. Même avec du chiffrement en transit, le fournisseur a accès aux données en clair lors du traitement.
-- **Dépendance (vendor lock-in)** — Les APIs propriétaires changent, augmentent leurs prix, ou ferment. Votre pipeline RAG ne devrait pas dépendre d'une entreprise dont vous ne contrôlez ni la roadmap, ni les conditions d'utilisation.
+- **Conformité légale** -La LPD (Loi fédérale sur la protection des données, Suisse) et le RGPD (UE) exigent un contrôle strict sur le transfert de données personnelles hors de l'espace européen. Utiliser OpenAI ou Pinecone pour traiter des documents internes peut constituer une violation.
+- **Confidentialité** -Des documents juridiques, financiers, médicaux ou stratégiques envoyés à un service cloud US sont potentiellement accessibles à des tiers. Même avec du chiffrement en transit, le fournisseur a accès aux données en clair lors du traitement.
+- **Dépendance (vendor lock-in)** -Les APIs propriétaires changent, augmentent leurs prix, ou ferment. Votre pipeline RAG ne devrait pas dépendre d'une entreprise dont vous ne contrôlez ni la roadmap, ni les conditions d'utilisation.
 
 ### La solution : tout en local
 
@@ -143,8 +143,8 @@ docker exec european-vector-store-ollama-1 ollama pull nomic-embed-text
 
 Extraction PDF vers Markdown structuré via PyMuPDF. Deux stratégies de détection de hiérarchie :
 
-1. **Font analysis** — taille de police + gras pour détecter les niveaux de titres
-2. **Numbering analysis** — `1.` → h1, `1.1.` → h2, `1.1.1.` → h3 (quand la police est uniforme)
+1. **Font analysis** -taille de police + gras pour détecter les niveaux de titres
+2. **Numbering analysis** -`1.` → h1, `1.1.` → h2, `1.1.1.` → h3 (quand la police est uniforme)
 
 Détection automatique des pages de table des matières (TOC).
 
@@ -152,9 +152,9 @@ Détection automatique des pages de table des matières (TOC).
 
 Trois stratégies de découpage :
 
-- **SemanticChunker** — découpe par sections du document (respecte la hiérarchie)
-- **RecursiveChunker** — découpe récursive par séparateurs (`\n\n`, `\n`, `. `, ` `)
-- **SimilarityChunker** — regroupe les paragraphes par similarité sémantique
+- **SemanticChunker** -découpe par sections du document (respecte la hiérarchie)
+- **RecursiveChunker** -découpe récursive par séparateurs (`\n\n`, `\n`, `. `, ` `)
+- **SimilarityChunker** -regroupe les paragraphes par similarité sémantique
 
 ```python
 from chunker import create_chunker
@@ -168,9 +168,9 @@ chunker = create_chunker("recursive", max_words=500, overlap_words=50)
 
 Embedding local avec trois backends :
 
-- **sentence-transformers** — modèles HuggingFace (recommandé : `multilingual-e5-large`)
-- **ollama** — via l'API REST Ollama (modèle `nomic-embed-text`)
-- **numpy** — pseudo-embeddings pour les tests (aucune dépendance ML)
+- **sentence-transformers** -modèles HuggingFace (recommandé : `multilingual-e5-large`)
+- **ollama** -via l'API REST Ollama (modèle `nomic-embed-text`)
+- **numpy** -pseudo-embeddings pour les tests (aucune dépendance ML)
 
 ### vector_store
 

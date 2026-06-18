@@ -1,5 +1,7 @@
 # tests/vektoria/test_server.py
 from fastapi.testclient import TestClient
+
+from vektoria.embedding import HashEmbedder
 from vektoria.server import create_app
 
 
@@ -162,3 +164,45 @@ def test_cors_origin_allowed_when_configured(tmp_path):
     c = _client(tmp_path, cors_origins=["https://app.example.com"])
     r = c.get("/health", headers={"Origin": "https://app.example.com"})
     assert r.headers.get("access-control-allow-origin") == "https://app.example.com"
+
+
+# ── ingestion + server-side text query ───────────────────────────────
+def test_ingest_then_text_query(tmp_path):
+    emb = HashEmbedder(dimension=32)
+    c = _client(tmp_path, embedder=emb)
+    c.post("/v1/indexes", json={"name": "docs", "dimension": 32})
+
+    text = (" ".join(f"w{i}" for i in range(120))).encode()
+    r = c.post(
+        "/v1/indexes/docs/ingest?max_words=50&overlap=10",
+        files={"file": ("doc.txt", text, "text/plain")},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["source"] == "doc.txt" and body["chunks"] >= 2
+    assert body["chunks"] == body["upserted"]
+
+    # text-only query: the server embeds it (no client-side vector)
+    r = c.post("/v1/indexes/docs/query", json={"text": "w0", "top_k": 1})
+    assert r.status_code == 200
+    assert r.json()["matches"][0]["metadata"]["source"] == "doc.txt"
+
+
+def test_query_without_vector_or_text_400(tmp_path):
+    c = _client(tmp_path, embedder=HashEmbedder(8))
+    c.post("/v1/indexes", json={"name": "docs", "dimension": 8})
+    assert c.post("/v1/indexes/docs/query", json={"top_k": 3}).status_code == 400
+
+
+def test_ingest_too_large_returns_413(tmp_path):
+    c = _client(tmp_path, embedder=HashEmbedder(8), max_upload_mb=0.001)  # ~1 KB cap
+    c.post("/v1/indexes", json={"name": "docs", "dimension": 8})
+    r = c.post("/v1/indexes/docs/ingest", files={"file": ("big.txt", b"x" * 5000, "text/plain")})
+    assert r.status_code == 413
+
+
+def test_ingest_dimension_mismatch_400(tmp_path):
+    c = _client(tmp_path, embedder=HashEmbedder(32))
+    c.post("/v1/indexes", json={"name": "docs", "dimension": 8})  # != embedder 32
+    r = c.post("/v1/indexes/docs/ingest", files={"file": ("a.txt", b"hello world", "text/plain")})
+    assert r.status_code == 400

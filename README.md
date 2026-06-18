@@ -2,10 +2,10 @@
 
 # ⬢ Vektoria
 
-### The European vector database. Self-hosted. Sovereign. Yours.
+### The sovereign European vector database. Self-hosted. Yours.
 
-**A Pinecone alternative you run on your own server — in Europe.**
-Your data never touches a US cloud. Ever.
+**An open-source vector database you run on your own server — in Europe.**
+Your data never leaves your infrastructure.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-00e5ff.svg)](LICENSE)
 [![GitHub](https://img.shields.io/badge/GitHub-hillzeealex%2Fvektoria-1f6feb.svg)](https://github.com/hillzeealex/vektoria)
@@ -19,41 +19,25 @@ Your data never touches a US cloud. Ever.
 
 ## Why Vektoria
 
-Most RAG stacks send your documents to US-based services — Pinecone, Weaviate Cloud, OpenAI. Every vector you store transits servers subject to the [CLOUD Act](https://en.wikipedia.org/wiki/CLOUD_Act), which lets US authorities access data held by American companies **even when the servers sit in Europe**.
+Vector search powers RAG and semantic apps — but most vector databases are US-based cloud services. Every vector you store transits servers subject to the [CLOUD Act](https://en.wikipedia.org/wiki/CLOUD_Act), which lets US authorities access data held by American companies **even when the servers sit in Europe**.
 
 For a European or Swiss company handling legal, financial, medical, or strategic documents, that's a compliance problem (GDPR / nLPD) and a confidentiality problem.
 
-**Vektoria is the answer: a vector database you host yourself.** Deploy it on your own VPS — Swiss, French, German, wherever — and your data stays under your control. It's the kind of engine Pinecone runs internally, packaged as something *you* own.
-
-> **Vektoria = Pinecone, but you run it yourself, in Europe.**
-
-## Vektoria vs. Pinecone
-
-| | Pinecone | **Vektoria** |
-|---|---|---|
-| Hosting | US cloud (managed) | **Your own server** (self-hosted) |
-| Data sovereignty | ❌ Subject to CLOUD Act | ✅ **Stays on your infra** |
-| Vector search | ✅ | ✅ cosine (brute-force) |
-| Keyword + **hybrid** search | ❌ not native | ✅ **built-in BM25 + hybrid** |
-| Document ingestion (PDF→vectors) | ❌ bring your own | ✅ **server-side, optional** |
-| Metadata filters | ✅ | ✅ |
-| Right to erasure / export (GDPR) | partial | ✅ **real delete + export** |
-| License | Proprietary | **MIT, open source** |
-| Cost | Per-vector pricing | **Free — your hardware** |
+**Vektoria is a vector database you host yourself.** Deploy it on your own VPS — Swiss, French, German, wherever — and your data stays under your control. Open source, MIT-licensed, and built so nothing ever leaves your machine.
 
 ## Features
 
 - 🧠 **Vector search** — exact cosine similarity, no approximation surprises.
-- 🔎 **Hybrid search** — combine semantic vectors with BM25 keyword scoring (a differentiator Pinecone lacks natively).
+- 🔎 **Hybrid search** — combine semantic vectors with BM25 keyword scoring for sharper recall.
 - 🏷️ **Metadata filters** — exact match, list membership, and more.
 - 📚 **Multi-index** — many independent indexes in one instance.
-- 📄 **Document ingestion** *(roadmap)* — send a PDF/DOCX, get it extracted, chunked, embedded, and stored, all server-side.
+- 📄 **Document ingestion** — send a PDF/DOCX, get it extracted, chunked, embedded, and stored, all server-side.
 - 🗑️ **GDPR-grade** — real deletion (right to erasure) and full export (portability).
 - 🔒 **Self-hosted** — one Docker command, your server, your rules.
 
 ## Quickstart (Python core)
 
-> Vektoria is in **active development**. The core engine below works today; the REST API and Docker image are on the [roadmap](#roadmap).
+> Vektoria is in **active development**. The core engine and REST API work today; the Docker image is on the [roadmap](#roadmap).
 
 ```python
 from vektoria import IndexManager
@@ -164,7 +148,7 @@ ssh -L 8000:localhost:8000 user@your-vps  # reach the dashboard locally, no publ
 <img src="assets/recall_vs_latency.png" alt="Recall vs latency: Vektoria ties FAISS-Flat and beats the cloud network hop" width="720" />
 </div>
 
-Vektoria's search is **exact** — 100% recall, no tuning — and it **ties FAISS-Flat** (Meta's C++) at ~0.26 ms: a pure-Python/numpy core matching the reference. The approximate engines (FAISS-HNSW, hnswlib, Chroma) shave microseconds but drop recall — low here because *random* vectors are a worst case for ANN; on real embeddings recall is much higher. Against **Pinecone, the self-hosted query is ~370× faster** (0.25 ms vs 92 ms) — not a smarter algorithm, just **no network hop**. That gap *is* the value of self-hosting.
+Vektoria's search is **exact** — 100% recall, no tuning — and it **ties FAISS-Flat** (Meta's C++) at ~0.26 ms: a pure-Python/numpy core matching the reference. The approximate engines (FAISS-HNSW, hnswlib, Chroma) shave microseconds but drop recall — low here because *random* vectors are a worst case for ANN; on real embeddings recall is much higher. A **hosted cloud service** pays a network round-trip on every query (the rightmost point, ~92 ms); **self-hosting removes it entirely**. That gap *is* the value of running it yourself.
 
 | engine | p50 latency | recall@10 | |
 |---|---:|---:|---|
@@ -197,7 +181,7 @@ Exact search is O(n): ~2 ms at 100k vectors, 100% recall, no network. Latency gr
 ## Roadmap
 
 - [x] **Core engine** — multi-index storage, cosine + BM25 + hybrid search, metadata filters, real delete, export, LRU cache, thread-safe
-- [x] **REST API** — Pinecone-shaped `/v1/indexes` endpoints, optional API-key auth, scoped CORS
+- [x] **REST API** — clean `/v1/indexes` endpoints, optional API-key auth, scoped CORS
 - [x] **Document ingestion** — `POST /v1/indexes/{name}/ingest` (PDF/DOCX/TXT/MD/HTML/CSV → vectors, server-side) + text-query embedding
 - [x] **pip install** — `pip install vektoria` (extras: `[server]`, `[embeddings]`, `[ingest]`, `[all]`) + `vektoria serve`
 - [ ] **Dashboard** — read-only console + search playground (via SSH tunnel)

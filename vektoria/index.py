@@ -131,6 +131,17 @@ class Index:
         ).fetchone()
         return json.loads(row["metadata"]) if row else {}
 
+    @staticmethod
+    def _normalize_scores(scores: dict[str, float]) -> dict[str, float]:
+        if not scores:
+            return {}
+        vals = list(scores.values())
+        lo, hi = min(vals), max(vals)
+        span = hi - lo
+        if span < 1e-9:
+            return {k: 1.0 for k in scores}
+        return {k: (v - lo) / span for k, v in scores.items()}
+
     def query(
         self,
         vector,
@@ -142,18 +153,45 @@ class Index:
     ) -> list[QueryMatch]:
         if self._matrix is None or len(self._ids) == 0:
             return []
+        if hybrid and not text:
+            raise ValueError("hybrid=True requires a 'text' argument for BM25")
 
         q = np.asarray(vector, dtype=np.float32)
         q = q / (np.linalg.norm(q) + 1e-9)
-        sims = self._matrix @ q  # cosine (rows are normalized)
+        sims = self._matrix @ q
 
+        if not hybrid:
+            return self._rank_vector_only(sims, top_k, filter)
+
+        candidate_k = max(top_k * 4, 50)
+        vec_scores = {self._ids[i]: float(sims[i]) for i in range(len(self._ids))}
+        bm25_scores = dict(self._bm25.search(text, top_k=candidate_k))
+
+        vec_norm = self._normalize_scores(vec_scores)
+        bm25_norm = self._normalize_scores(bm25_scores)
+
+        combined: dict[str, float] = {}
+        for cid in set(vec_norm) | set(bm25_norm):
+            combined[cid] = alpha * vec_norm.get(cid, 0.0) + (1 - alpha) * bm25_norm.get(cid, 0.0)
+
+        ranked = sorted(combined.items(), key=lambda kv: kv[1], reverse=True)
+        out: list[QueryMatch] = []
+        for cid, score in ranked:
+            if len(out) >= top_k:
+                break
+            meta = self._row_metadata(cid)
+            if filter and not self._matches_filter(meta, filter):
+                continue
+            out.append(QueryMatch(id=cid, score=score, metadata=meta))
+        return out
+
+    def _rank_vector_only(self, sims, top_k, filter):
         fetch_k = top_k * 4 if filter else top_k
         if len(sims) <= fetch_k:
             order = np.argsort(sims)[::-1]
         else:
             part = np.argpartition(sims, -fetch_k)[-fetch_k:]
             order = part[np.argsort(sims[part])[::-1]]
-
         out: list[QueryMatch] = []
         for i in order:
             if len(out) >= top_k:

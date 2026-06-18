@@ -141,3 +141,27 @@ def test_delete_by_filter(tmp_path):
     assert deleted == 2
     assert idx.count() == 1
     idx.close()
+
+
+# append to tests/vektoria/test_index.py
+
+def test_hybrid_query_surfaces_keyword_match(tmp_path):
+    idx = Index.create(tmp_path / "i", dimension=3)
+    idx.upsert([
+        {"id": "a", "values": _vec(1, 0, 0), "metadata": {"text": "contrat de bail"}},
+        {"id": "b", "values": _vec(1, 0, 0), "metadata": {"text": "clause de non-concurrence"}},
+    ])
+    matches = idx.query(
+        _vec(1, 0, 0), top_k=2, hybrid=True, alpha=0.5, text="non-concurrence"
+    )
+    assert matches[0].id == "b"  # keyword breaks the tie
+    idx.close()
+
+
+def test_hybrid_requires_text(tmp_path):
+    import pytest
+    idx = Index.create(tmp_path / "i", dimension=3)
+    idx.upsert([{"id": "a", "values": _vec(1, 0, 0), "metadata": {"text": "x"}}])
+    with pytest.raises(ValueError):
+        idx.query(_vec(1, 0, 0), hybrid=True)  # no text
+    idx.close()

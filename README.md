@@ -112,6 +112,46 @@ dump = index.export()
 
 One index = one directory with a single SQLite database as the source of truth. Vectors are L2-normalized on write and stored as float32 blobs alongside their metadata. No data ever leaves the box.
 
+## Self-host on your VPS
+
+> **Current state:** Vektoria ships today as a Python package + engine. The
+> one-command Docker image and REST API are on the [roadmap](#roadmap) — until
+> then you run it as a library on your own server.
+
+**1. Get a VPS in Europe / Switzerland.** Any provider works — Infomaniak or
+Exoscale (🇨🇭), OVHcloud or Scaleway (🇪🇺). Minimum ~4 GB RAM; 8–16 GB if you use
+server-side document embedding.
+
+**2. Install.**
+```bash
+ssh user@your-vps
+sudo apt update && sudo apt install -y python3.11 python3.11-venv git
+git clone https://github.com/hillzeealex/vektoria.git
+cd vektoria
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python3 -m pytest tests/vektoria/ -q   # sanity check: 22 passing
+```
+
+**3. Use it — your data stays on the box.**
+```python
+from vektoria import IndexManager
+
+mgr = IndexManager("/var/lib/vektoria")   # data dir on the VPS disk
+mgr.create_index("docs", dimension=384)
+mgr.get("docs").upsert([{"id": "1", "values": embed("…"), "metadata": {"text": "…"}}])
+```
+
+**4. Harden it (GDPR / art. 32).**
+- Enable **full-disk encryption (LUKS)** on the VPS for data at rest.
+- Keep the data directory on the VPS only — nothing leaves the machine.
+
+**Coming soon — one-command deploy:**
+```bash
+docker compose up -d                      # REST API + optional API key (roadmap)
+ssh -L 8000:localhost:8000 user@your-vps  # reach the dashboard locally, no public port
+```
+
 ## Roadmap
 
 - [x] **Core engine** — multi-index storage, cosine + BM25 + hybrid search, metadata filters, real delete, export, LRU cache

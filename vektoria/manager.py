@@ -27,12 +27,14 @@ class IndexManager:
                 f"Invalid index name {name!r}: use letters, digits, '-' and '_' only"
             )
 
-    def create_index(self, name: str, dimension: int, metric: str = "cosine") -> None:
+    def create_index(self, name: str, dimension: int, metric: str = "cosine",
+                     backend: str = "bruteforce", bit_width: int = 4) -> None:
         self._validate_name(name)
         path = self.data_dir / name
         if path.exists():
             raise ValueError(f"Index {name!r} already exists")
-        Index.create(path, dimension=dimension, metric=metric).close()
+        Index.create(path, dimension=dimension, metric=metric,
+                     backend=backend, bit_width=bit_width).close()
 
     def list_indexes(self) -> list[dict]:
         # Read summaries directly — don't route through get(), which would load

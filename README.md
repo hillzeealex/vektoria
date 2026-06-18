@@ -189,7 +189,7 @@ Switzerland has its own data-protection law (nLPD/revFADP), benefits from an EU 
 - [x] **pip install** — `pip install vektoria` (extras: `[server]`, `[embeddings]`, `[embeddings-onnx]`, `[ingest]`, `[all]`) + `vektoria serve`
 - [x] **Dashboard** — read-only console + search playground at `/dashboard`
 - [x] **Docker** — `docker compose up -d`, torch-free image, non-root, persistent volume
-- [ ] **Scale backend** — optional [TurboVec](https://github.com/RyanCodrai/turbovec) ANN engine for very large indexes
+- [x] **Scale backend** *(optional)* — [TurboVec](https://github.com/RyanCodrai/turbovec) ANN engine via `pip install vektoria[ann]` + per-index `backend="turbovec"` (brute-force stays the default)
 
 ## License
 

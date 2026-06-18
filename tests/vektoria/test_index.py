@@ -165,3 +165,23 @@ def test_hybrid_requires_text(tmp_path):
     with pytest.raises(ValueError):
         idx.query(_vec(1, 0, 0), hybrid=True)  # no text
     idx.close()
+
+
+# append to tests/vektoria/test_index.py
+
+def test_export_roundtrips_all_data(tmp_path):
+    idx = Index.create(tmp_path / "i", dimension=3, metric="cosine")
+    idx.upsert([
+        {"id": "a", "values": _vec(1, 0, 0), "metadata": {"text": "alpha"}},
+        {"id": "b", "values": _vec(0, 1, 0), "metadata": {"text": "beta"}},
+    ])
+    dump = idx.export()
+    assert dump["dimension"] == 3
+    assert dump["metric"] == "cosine"
+    assert len(dump["vectors"]) == 2
+    ids = {v["id"] for v in dump["vectors"]}
+    assert ids == {"a", "b"}
+    a = next(v for v in dump["vectors"] if v["id"] == "a")
+    assert len(a["values"]) == 3
+    assert a["metadata"]["text"] == "alpha"
+    idx.close()

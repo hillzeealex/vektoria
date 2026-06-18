@@ -80,6 +80,20 @@ class Index:
     def close(self):
         self._db.close()
 
+    def export(self) -> dict:
+        rows = self._db.execute(
+            "SELECT id, vector, metadata FROM vectors ORDER BY rowid"
+        ).fetchall()
+        vectors = [
+            {
+                "id": r["id"],
+                "values": np.frombuffer(r["vector"], dtype=np.float32).tolist(),
+                "metadata": json.loads(r["metadata"]),
+            }
+            for r in rows
+        ]
+        return {"dimension": self.dimension, "metric": self.metric, "vectors": vectors}
+
     def upsert(self, items: list[dict]) -> int:
         if not items:
             return 0

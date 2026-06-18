@@ -80,6 +80,30 @@ class Index:
     def close(self):
         self._db.close()
 
+    def upsert(self, items: list[dict]) -> int:
+        if not items:
+            return 0
+        dim = self.dimension
+        rows = []
+        for it in items:
+            values = it["values"]
+            if len(values) != dim:
+                raise ValueError(
+                    f"Vector for id={it['id']!r} has dim {len(values)}, expected {dim}"
+                )
+            vec = np.asarray(values, dtype=np.float32)
+            vec = vec / (np.linalg.norm(vec) + 1e-9)  # L2 normalize on write
+            meta = json.dumps(it.get("metadata") or {}, ensure_ascii=False)
+            rows.append((it["id"], vec.astype(np.float32).tobytes(), meta))
+
+        self._db.executemany(
+            "INSERT OR REPLACE INTO vectors (id, vector, metadata) VALUES (?, ?, ?)",
+            rows,
+        )
+        self._db.commit()
+        self._load_cache()  # rebuild matrix + ids + bm25 from DB (source of truth)
+        return len(items)
+
     # in-memory cache
     def _load_cache(self):
         rows = self._db.execute(

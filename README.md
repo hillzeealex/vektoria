@@ -163,7 +163,22 @@ Vektoria's search is **exact** brute-force cosine — recall is always 100%, no 
 | 50,000  | 1.25 ms   | 1.99 ms   | 77 MB |
 | 100,000 | 2.11 ms   | 2.69 ms   | 154 MB |
 
-At 100k vectors an exact query is ~2 ms **locally** — no network hop, 100% recall (Pinecone is ~50–200 ms over the wire). Latency grows linearly with size: that's the honest cost of exactness. Past ~1M vectors an approximate backend ([TurboVec](https://github.com/RyanCodrai/turbovec), Rust) would flatten the curve; until then, brute-force is simpler and fast enough.
+At 100k vectors an exact query is ~2 ms **locally** — no network hop, 100% recall. Latency grows linearly with size: that's the honest cost of exactness. Past ~1M vectors an approximate backend ([TurboVec](https://github.com/RyanCodrai/turbovec), Rust) would flatten the curve; until then, brute-force is simpler and fast enough.
+
+### Head-to-head vs other engines
+
+Same 10,000 vectors, same 200 queries, same machine (`benchmarks/bench_vs.py`), recall@10 vs exact ground truth:
+
+| engine | p50 latency | recall@10 | notes |
+|---|---:|---:|---|
+| **Vektoria** (exact) | **0.25 ms** | **100%** | self-hosted |
+| FAISS-Flat (exact) | 0.27 ms | 100% | Meta, C++ |
+| FAISS-HNSW (approx) | 0.15 ms | 69% | |
+| hnswlib (approx) | 0.22 ms | 65% | |
+| Chroma (approx) | 0.71 ms | 52% | |
+| Pinecone (cloud) | 92 ms | 98% | **incl. network** |
+
+Reading it honestly: Vektoria's exact search **ties FAISS-Flat** (both ~0.26 ms, 100% recall) — the pure-Python/numpy core matches Meta's C++ at this scale. The approximate engines are marginally faster but trade recall (low here because *random* vectors are a worst case for ANN; real embeddings recall higher). Against **Pinecone the self-hosted query is ~370× faster (0.25 ms vs 92 ms)** — not a better algorithm, but **no network hop**: that gap *is* the value of self-hosting. The trade-off flips past ~1M vectors, where an ANN backend earns its keep.
 
 ## Roadmap
 

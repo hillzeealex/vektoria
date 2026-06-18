@@ -8,6 +8,7 @@
 Your data never touches a US cloud. Ever.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-00e5ff.svg)](LICENSE)
+[![GitHub](https://img.shields.io/badge/GitHub-hillzeealex%2Fvektoria-1f6feb.svg)](https://github.com/hillzeealex/vektoria)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-1f6feb.svg)](https://www.python.org/)
 [![Status: alpha](https://img.shields.io/badge/Status-alpha-a371f7.svg)](#roadmap)
 [![Made in 🇨🇭](https://img.shields.io/badge/Hosted_in-Switzerland-ff2e63.svg)](#why-sovereignty)

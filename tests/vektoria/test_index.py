@@ -64,3 +64,25 @@ def test_upsert_rejects_wrong_dimension(tmp_path):
     with pytest.raises(ValueError):
         idx.upsert([{"id": "a", "values": _vec(1, 0), "metadata": {}}])
     idx.close()
+
+
+# append to tests/vektoria/test_index.py
+
+def test_query_returns_nearest_first(tmp_path):
+    idx = Index.create(tmp_path / "i", dimension=3)
+    idx.upsert([
+        {"id": "x", "values": _vec(1, 0, 0), "metadata": {"text": "x"}},
+        {"id": "y", "values": _vec(0, 1, 0), "metadata": {"text": "y"}},
+        {"id": "z", "values": _vec(0.9, 0.1, 0), "metadata": {"text": "z"}},
+    ])
+    matches = idx.query(_vec(1, 0, 0), top_k=2)
+    assert [m.id for m in matches] == ["x", "z"]
+    assert matches[0].score > matches[1].score
+    assert matches[0].metadata["text"] == "x"
+    idx.close()
+
+
+def test_query_empty_index_returns_empty(tmp_path):
+    idx = Index.create(tmp_path / "i", dimension=3)
+    assert idx.query(_vec(1, 0, 0), top_k=5) == []
+    idx.close()

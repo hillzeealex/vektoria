@@ -104,6 +104,55 @@ class Index:
         self._load_cache()  # rebuild matrix + ids + bm25 from DB (source of truth)
         return len(items)
 
+    def _row_metadata(self, vector_id: str) -> dict:
+        row = self._db.execute(
+            "SELECT metadata FROM vectors WHERE id = ?", (vector_id,)
+        ).fetchone()
+        return json.loads(row["metadata"]) if row else {}
+
+    def query(
+        self,
+        vector,
+        top_k: int = 5,
+        filter: dict | None = None,
+        hybrid: bool = False,
+        alpha: float = 0.5,
+        text: str | None = None,
+    ) -> list[QueryMatch]:
+        if self._matrix is None or len(self._ids) == 0:
+            return []
+
+        q = np.asarray(vector, dtype=np.float32)
+        q = q / (np.linalg.norm(q) + 1e-9)
+        sims = self._matrix @ q  # cosine (rows are normalized)
+
+        fetch_k = top_k * 4 if filter else top_k
+        if len(sims) <= fetch_k:
+            order = np.argsort(sims)[::-1]
+        else:
+            part = np.argpartition(sims, -fetch_k)[-fetch_k:]
+            order = part[np.argsort(sims[part])[::-1]]
+
+        out: list[QueryMatch] = []
+        for i in order:
+            if len(out) >= top_k:
+                break
+            meta = self._row_metadata(self._ids[i])
+            if filter and not self._matches_filter(meta, filter):
+                continue
+            out.append(QueryMatch(id=self._ids[i], score=float(sims[i]), metadata=meta))
+        return out
+
+    def _matches_filter(self, meta: dict, filter: dict) -> bool:
+        for key, value in filter.items():
+            actual = meta.get(key)
+            if isinstance(value, list):
+                if actual not in value:
+                    return False
+            elif actual != value:
+                return False
+        return True
+
     # in-memory cache
     def _load_cache(self):
         rows = self._db.execute(

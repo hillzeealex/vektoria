@@ -32,6 +32,15 @@ class UpsertRequest(BaseModel):
     vectors: list[VectorItem]
 
 
+class QueryRequest(BaseModel):
+    vector: list[float]
+    top_k: int = 5
+    filter: dict | None = None
+    hybrid: bool = False
+    alpha: float = 0.5
+    text: str | None = None
+
+
 def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
     data_dir = data_dir if data_dir is not None else os.environ.get("VK_DATA_DIR", "./data")
     api_key = api_key if api_key is not None else os.environ.get("VK_API_KEY")
@@ -88,5 +97,19 @@ def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
         except ValueError as e:
             raise HTTPException(400, str(e))
         return {"upserted": n}
+
+    @app.post("/v1/indexes/{name}/query")
+    def query(name: str, req: QueryRequest):
+        index = _get_index(name)
+        try:
+            matches = index.query(
+                req.vector, top_k=req.top_k, filter=req.filter,
+                hybrid=req.hybrid, alpha=req.alpha, text=req.text,
+            )
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return {"matches": [
+            {"id": m.id, "score": m.score, "metadata": m.metadata} for m in matches
+        ]}
 
     return app

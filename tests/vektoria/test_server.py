@@ -79,3 +79,34 @@ def test_upsert_wrong_dimension_400(tmp_path):
         {"id": "a", "values": [1, 0], "metadata": {}},
     ]})
     assert r.status_code == 400
+
+
+def test_query_returns_matches(tmp_path):
+    c = _client(tmp_path)
+    c.post("/v1/indexes", json={"name": "docs", "dimension": 3})
+    c.post("/v1/indexes/docs/upsert", json={"vectors": [
+        {"id": "x", "values": [1, 0, 0], "metadata": {"text": "x"}},
+        {"id": "z", "values": [0.9, 0.1, 0], "metadata": {"text": "z"}},
+        {"id": "y", "values": [0, 1, 0], "metadata": {"text": "y"}},
+    ]})
+    r = c.post("/v1/indexes/docs/query", json={"vector": [1, 0, 0], "top_k": 2})
+    assert r.status_code == 200
+    matches = r.json()["matches"]
+    assert [m["id"] for m in matches] == ["x", "z"]
+    assert "score" in matches[0] and matches[0]["metadata"]["text"] == "x"
+
+
+def test_query_hybrid_requires_text_400(tmp_path):
+    c = _client(tmp_path)
+    c.post("/v1/indexes", json={"name": "docs", "dimension": 3})
+    c.post("/v1/indexes/docs/upsert", json={"vectors": [
+        {"id": "a", "values": [1, 0, 0], "metadata": {"text": "x"}},
+    ]})
+    r = c.post("/v1/indexes/docs/query", json={"vector": [1, 0, 0], "hybrid": True})
+    assert r.status_code == 400
+
+
+def test_query_missing_index_404(tmp_path):
+    c = _client(tmp_path)
+    r = c.post("/v1/indexes/nope/query", json={"vector": [1, 0, 0]})
+    assert r.status_code == 404

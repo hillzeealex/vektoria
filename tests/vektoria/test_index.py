@@ -86,3 +86,28 @@ def test_query_empty_index_returns_empty(tmp_path):
     idx = Index.create(tmp_path / "i", dimension=3)
     assert idx.query(_vec(1, 0, 0), top_k=5) == []
     idx.close()
+
+
+# append to tests/vektoria/test_index.py
+
+def test_query_filters_by_exact_match(tmp_path):
+    idx = Index.create(tmp_path / "i", dimension=3)
+    idx.upsert([
+        {"id": "a", "values": _vec(1, 0, 0), "metadata": {"source": "doc1"}},
+        {"id": "b", "values": _vec(0.99, 0.01, 0), "metadata": {"source": "doc2"}},
+    ])
+    matches = idx.query(_vec(1, 0, 0), top_k=5, filter={"source": "doc2"})
+    assert [m.id for m in matches] == ["b"]
+    idx.close()
+
+
+def test_query_filters_by_list_membership(tmp_path):
+    idx = Index.create(tmp_path / "i", dimension=3)
+    idx.upsert([
+        {"id": "a", "values": _vec(1, 0, 0), "metadata": {"source": "doc1"}},
+        {"id": "b", "values": _vec(0.9, 0.1, 0), "metadata": {"source": "doc2"}},
+        {"id": "c", "values": _vec(0.8, 0.2, 0), "metadata": {"source": "doc3"}},
+    ])
+    matches = idx.query(_vec(1, 0, 0), top_k=5, filter={"source": ["doc1", "doc3"]})
+    assert sorted(m.id for m in matches) == ["a", "c"]
+    idx.close()

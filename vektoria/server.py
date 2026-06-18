@@ -10,9 +10,16 @@ or, when omitted, from environment variables:
 
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
 from vektoria import IndexManager
+
+
+class CreateIndexRequest(BaseModel):
+    name: str
+    dimension: int = Field(gt=0)
+    metric: str = "cosine"
 
 
 def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
@@ -30,5 +37,30 @@ def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
     @app.get("/health")
     def health():
         return {"status": "ok", "indexes": len(manager.list_indexes())}
+
+    @app.post("/v1/indexes", status_code=201)
+    def create_index(req: CreateIndexRequest):
+        try:
+            manager.create_index(req.name, dimension=req.dimension, metric=req.metric)
+        except ValueError as e:
+            msg = str(e)
+            if "already exists" in msg:
+                raise HTTPException(409, msg)
+            raise HTTPException(400, msg)
+        return {"name": req.name, "dimension": req.dimension, "metric": req.metric}
+
+    @app.get("/v1/indexes")
+    def list_indexes():
+        return {"indexes": manager.list_indexes()}
+
+    @app.delete("/v1/indexes/{name}")
+    def delete_index(name: str):
+        try:
+            manager.delete_index(name)
+        except KeyError:
+            raise HTTPException(404, f"Index {name!r} not found")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return {"deleted": name}
 
     return app

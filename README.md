@@ -153,6 +153,23 @@ document (PDF/DOCX/…)  ─or─  raw vectors
    exact cosine  +  BM25  +  hybrid  +  filters
 ```
 
+## Scaling to millions of vectors
+
+Brute-force is exact and fast enough for most workloads (≤ ~1M vectors). Beyond that, the linear cost of exact search and the `float32` memory footprint start to bite. For those cases Vektoria can swap its vector backend for [TurboVec](https://github.com/RyanCodrai/turbovec) — a Rust ANN engine using 2–4-bit quantization — trading a little recall for large memory savings and sub-linear search.
+
+It's fully **opt-in** (the base install stays numpy-only):
+
+```bash
+pip install 'vektoria[ann]'
+```
+
+```python
+# choose the backend per index — brute-force stays the default
+mgr.create_index("huge", dimension=768, backend="turbovec")
+```
+
+Everything else is identical: the same `upsert` / `query` / `delete` / hybrid / filter API, SQLite remains the source of truth, and GDPR delete/export still work. The only difference is that search becomes **approximate** (recall < 100%). Reach for it only when you genuinely have millions of vectors — otherwise the exact default is simpler and just as fast.
+
 ## Self-host on your VPS
 
 **1. Get a VPS in Europe / Switzerland.** Any provider works — Infomaniak or Exoscale (🇨🇭), OVHcloud or Scaleway (🇪🇺). Minimum ~4 GB RAM; 8–16 GB if you embed documents server-side.

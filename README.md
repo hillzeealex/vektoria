@@ -154,9 +154,10 @@ ssh -L 8000:localhost:8000 user@your-vps  # reach the dashboard locally, no publ
 
 ## Roadmap
 
-- [x] **Core engine** — multi-index storage, cosine + BM25 + hybrid search, metadata filters, real delete, export, LRU cache
-- [ ] **REST API** — Pinecone-shaped `/v1/indexes` endpoints, optional API-key auth
-- [ ] **Document ingestion** — `POST /ingest` (PDF/DOCX → vectors, server-side)
+- [x] **Core engine** — multi-index storage, cosine + BM25 + hybrid search, metadata filters, real delete, export, LRU cache, thread-safe
+- [x] **REST API** — Pinecone-shaped `/v1/indexes` endpoints, optional API-key auth, scoped CORS
+- [x] **Document ingestion** — `POST /v1/indexes/{name}/ingest` (PDF/DOCX/TXT/MD/HTML/CSV → vectors, server-side) + text-query embedding
+- [x] **pip install** — `pip install vektoria` (extras: `[server]`, `[embeddings]`, `[ingest]`, `[all]`) + `vektoria serve`
 - [ ] **Dashboard** — read-only console + search playground (via SSH tunnel)
 - [ ] **Docker** — one-command self-host deployment
 - [ ] **Scale backend** — optional [TurboVec](https://github.com/RyanCodrai/turbovec) ANN engine for large indexes

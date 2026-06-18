@@ -22,6 +22,16 @@ class CreateIndexRequest(BaseModel):
     metric: str = "cosine"
 
 
+class VectorItem(BaseModel):
+    id: str
+    values: list[float]
+    metadata: dict = {}
+
+
+class UpsertRequest(BaseModel):
+    vectors: list[VectorItem]
+
+
 def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
     data_dir = data_dir if data_dir is not None else os.environ.get("VK_DATA_DIR", "./data")
     api_key = api_key if api_key is not None else os.environ.get("VK_API_KEY")
@@ -33,6 +43,12 @@ def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
     app = FastAPI(title="Vektoria", version="1.0.0")
     app.state.manager = manager
     app.state.api_key = api_key
+
+    def _get_index(name: str):
+        try:
+            return manager.get(name)
+        except KeyError:
+            raise HTTPException(404, f"Index {name!r} not found")
 
     @app.get("/health")
     def health():
@@ -62,5 +78,15 @@ def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
         except ValueError as e:
             raise HTTPException(400, str(e))
         return {"deleted": name}
+
+    @app.post("/v1/indexes/{name}/upsert")
+    def upsert(name: str, req: UpsertRequest):
+        index = _get_index(name)
+        items = [{"id": v.id, "values": v.values, "metadata": v.metadata} for v in req.vectors]
+        try:
+            n = index.upsert(items)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return {"upserted": n}
 
     return app

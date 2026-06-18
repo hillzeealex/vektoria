@@ -50,3 +50,32 @@ def test_create_bad_metric_returns_400(tmp_path):
 def test_delete_missing_index_returns_404(tmp_path):
     c = _client(tmp_path)
     assert c.delete("/v1/indexes/nope").status_code == 404
+
+
+def test_upsert_vectors(tmp_path):
+    c = _client(tmp_path)
+    c.post("/v1/indexes", json={"name": "docs", "dimension": 3})
+    r = c.post("/v1/indexes/docs/upsert", json={"vectors": [
+        {"id": "a", "values": [1, 0, 0], "metadata": {"text": "alpha"}},
+        {"id": "b", "values": [0, 1, 0], "metadata": {"text": "beta"}},
+    ]})
+    assert r.status_code == 200
+    assert r.json()["upserted"] == 2
+    assert c.get("/v1/indexes").json()["indexes"][0]["count"] == 2
+
+
+def test_upsert_missing_index_404(tmp_path):
+    c = _client(tmp_path)
+    r = c.post("/v1/indexes/nope/upsert", json={"vectors": [
+        {"id": "a", "values": [1, 0, 0], "metadata": {}},
+    ]})
+    assert r.status_code == 404
+
+
+def test_upsert_wrong_dimension_400(tmp_path):
+    c = _client(tmp_path)
+    c.post("/v1/indexes", json={"name": "docs", "dimension": 3})
+    r = c.post("/v1/indexes/docs/upsert", json={"vectors": [
+        {"id": "a", "values": [1, 0], "metadata": {}},
+    ]})
+    assert r.status_code == 400

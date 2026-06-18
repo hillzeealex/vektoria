@@ -48,3 +48,12 @@ def test_rejects_unsafe_index_name(tmp_path):
     for bad in ["../escape", "a/b", "", "."]:
         with pytest.raises(ValueError):
             mgr.create_index(bad, dimension=3)
+
+
+def test_lru_eviction_does_not_lose_data(tmp_path):
+    mgr = IndexManager(tmp_path, cache_size=2)
+    for n in ["i1", "i2", "i3"]:
+        mgr.create_index(n, dimension=3)
+        mgr.get(n).upsert([{"id": "a", "values": [1.0, 0.0, 0.0], "metadata": {}}])
+    assert len(mgr._open) <= 2
+    assert mgr.get("i1").count() == 1  # data still on disk, reopened cleanly

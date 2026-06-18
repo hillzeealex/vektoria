@@ -78,18 +78,19 @@ def chart_tradeoff():
     # faint band marking the exact (100% recall) frontier
     ax.axhspan(99, 103, color=EXACT, alpha=0.06, zorder=0)
 
-    labelpos = {  # (x-factor, y-offset) to keep labels off the markers
-        "Vektoria":   (0.52, 2.6), "FAISS-Flat": (1.10, -3.6),
-        "FAISS-HNSW": (1.16, 1.6), "hnswlib":    (1.05, -3.8),
-        "Chroma":     (1.16, 1.6), "Pinecone":   (0.40, 2.2),
-    }
     for name, lat, rec, cat, vk in ENGINES:
-        color = CAT_COLOR[cat]
-        ax.scatter(lat, rec, s=300 if vk else 150, color=color, zorder=3,
+        ax.scatter(lat, rec, s=300 if vk else 150, color=CAT_COLOR[cat], zorder=3,
                    edgecolors=FG if vk else "none", linewidths=2.2)
-        fx, dy = labelpos[name]
-        ax.annotate(name, (lat, rec), xytext=(lat * fx, rec + dy),
-                    color=FG, fontsize=10.5, fontweight="bold" if vk else "normal", zorder=4)
+
+    # Label only the well-separated engines here; the two exact ones live in the
+    # zoom inset below (they sit almost on top of each other — that's the point).
+    labelpos = {"FAISS-HNSW": (1.16, 1.6), "hnswlib": (1.05, -3.8),
+                "Chroma": (1.16, 1.6), "Pinecone": (0.40, 2.2)}
+    for name, lat, rec, cat, vk in ENGINES:
+        if name in labelpos:
+            fx, dy = labelpos[name]
+            ax.annotate(name, (lat, rec), xytext=(lat * fx, rec + dy),
+                        color=FG, fontsize=10.5, zorder=4)
 
     ax.set_xscale("log")
     ax.set_xlabel("← faster          query latency  (ms, log scale)          slower →")
@@ -99,12 +100,28 @@ def chart_tradeoff():
     ax.text(0.0, 1.012, "Each dot is an engine · top-left (fast + accurate) wins",
             transform=ax.transAxes, color=MUTED, fontsize=9.5)
 
-    # arrow pointing from open space up at the winning (top-left) cluster
-    ax.annotate("fast + accurate\n= best", xy=(0.115, 0.93), xytext=(0.34, 0.80),
-                xycoords="axes fraction", textcoords="axes fraction",
-                color=EXACT, fontsize=10.5, fontweight="bold", ha="center", va="center",
-                arrowprops=dict(arrowstyle="-|>", color=EXACT, lw=2,
-                                connectionstyle="arc3,rad=-0.2"))
+    # ── zoom inset: separate the two near-identical exact engines ────
+    inset = ax.inset_axes([0.30, 0.50, 0.34, 0.34])
+    inset.axhspan(99, 103, color=EXACT, alpha=0.06)
+    for name, lat, rec, cat, vk in ENGINES:
+        if cat != "exact":
+            continue
+        inset.scatter(lat, rec, s=240 if vk else 130, color=CAT_COLOR[cat], zorder=3,
+                      edgecolors=FG if vk else "none", linewidths=2.0)
+        inset.annotate(name, (lat, rec), xytext=(0, 10 if vk else -16),
+                       textcoords="offset points", ha="center", color=FG,
+                       fontsize=8.5, fontweight="bold" if vk else "normal")
+    inset.set_xlim(0.235, 0.285)
+    inset.set_ylim(99.2, 100.8)
+    inset.set_xticks([0.25, 0.27])
+    inset.set_yticks([100])
+    inset.tick_params(labelsize=7, colors=MUTED)
+    inset.set_facecolor(PANEL)
+    inset.set_title("zoom — exact engines (tied)", fontsize=8.5, color=MUTED, pad=4)
+    for s in inset.spines.values():
+        s.set_color(GRID)
+    inset.grid(True, alpha=0.25)
+    ax.indicate_inset_zoom(inset, edgecolor=MUTED, alpha=0.7, lw=1.0)
 
     handles = [Line2D([0], [0], marker="o", linestyle="", markersize=9,
                       markerfacecolor=CAT_COLOR[c], markeredgecolor="none", label=CAT_LABEL[c])

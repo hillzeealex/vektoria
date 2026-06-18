@@ -48,14 +48,19 @@ class Index:
         self._db.row_factory = sqlite3.Row
         self._dimension = int(self._meta_value("dimension"))
         self._metric = self._meta_value("metric")
+        self._backend = self._meta_value_or("backend", "bruteforce")
+        self._bit_width = int(self._meta_value_or("bit_width", "4"))
         self._load_cache()
 
     @classmethod
-    def create(cls, path, dimension: int, metric: str = "cosine") -> "Index":
+    def create(cls, path, dimension: int, metric: str = "cosine",
+               backend: str = "bruteforce", bit_width: int = 4) -> "Index":
         if metric not in SUPPORTED_METRICS:
             raise ValueError(
                 f"Unsupported metric {metric!r}; v1 supports {sorted(SUPPORTED_METRICS)}"
             )
+        if backend not in ("bruteforce", "turbovec"):
+            raise ValueError(f"Unknown backend {backend!r}; use 'bruteforce' or 'turbovec'")
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
         db = sqlite3.connect(str(path / "index.db"))
@@ -71,7 +76,8 @@ class Index:
         )
         db.executemany(
             "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-            [("dimension", str(dimension)), ("metric", metric)],
+            [("dimension", str(dimension)), ("metric", metric),
+             ("backend", backend), ("bit_width", str(bit_width))],
         )
         db.commit()
         db.close()
@@ -130,21 +136,31 @@ class Index:
             )
             self._db.commit()
 
-            appended = []
+            appended_rows, appended_vecs, replaced = [], [], []
             for rid, v, m in prepared:
                 if rid in self._row_of:                 # in-place replace, O(1)
                     i = self._row_of[rid]
-                    self._matrix[i] = v
+                    if self._matrix is not None:
+                        self._matrix[i] = v
                     self._meta[i] = m
                     self._bm25.remove(rid)
+                    replaced.append((i, v))
                 else:                                    # new row, batched append
                     self._row_of[rid] = len(self._ids)
                     self._ids.append(rid)
                     self._meta.append(m)
-                    appended.append(v)
+                    appended_rows.append(self._row_of[rid])
+                    appended_vecs.append(v)
                 self._bm25.add(rid, m.get("text", ""))
-            if appended:
-                block = np.vstack(appended)
+
+            if self._ann is not None:
+                for row, v in replaced:
+                    self._ann.remove(row)
+                    self._ann.add(v.reshape(1, -1), [row])
+                if appended_vecs:
+                    self._ann.add(np.vstack(appended_vecs), appended_rows)
+            elif appended_vecs:
+                block = np.vstack(appended_vecs)
                 self._matrix = block if self._matrix is None else np.vstack([self._matrix, block])
         return len(items)
 
@@ -163,6 +179,11 @@ class Index:
 
             self._db.executemany("DELETE FROM vectors WHERE id = ?", [(i,) for i in targets])
             self._db.commit()
+
+            if self._ann is not None:
+                # row ids compact after a delete → rebuild the ANN index from disk
+                self._load_cache()
+                return len(targets)
 
             keep = [i for i, rid in enumerate(self._ids) if rid not in targets]
             self._matrix = self._matrix[keep] if keep else None
@@ -186,20 +207,30 @@ class Index:
         if hybrid and not text:
             raise ValueError("hybrid=True requires a 'text' argument for BM25")
         with self._lock:
-            if self._matrix is None or not self._ids:
+            if not self._ids:
                 return []
             q = np.asarray(vector, dtype=np.float32)
             q = q / (np.linalg.norm(q) + _EPS)
-            sims = self._matrix @ q  # cosine: rows and query are unit vectors
-            ordered = self._rank_hybrid(sims, text, alpha, top_k) if hybrid \
-                else self._rank_vector(sims, top_k, bool(filter))
+            if self._ann is not None:                    # approximate (TurboVec)
+                cand = self._ann.search(q, max(top_k * 4, 50))
+                ordered = self._combine_hybrid_scores(dict(cand), text, alpha) \
+                    if hybrid else cand
+            else:                                         # exact brute-force
+                sims = self._matrix @ q  # cosine: rows and query are unit vectors
+                ordered = self._rank_hybrid(sims, text, alpha, top_k) if hybrid \
+                    else self._rank_vector(sims, top_k, bool(filter))
             return self._assemble(ordered, top_k, filter)
 
     def export(self) -> dict:
         with self._lock:
+            rows = self._db.execute(
+                "SELECT id, vector, metadata FROM vectors ORDER BY rowid"
+            ).fetchall()
             vectors = [
-                {"id": self._ids[i], "values": self._matrix[i].tolist(), "metadata": self._meta[i]}
-                for i in range(len(self._ids))
+                {"id": r["id"],
+                 "values": np.frombuffer(r["vector"], dtype=np.float32).tolist(),
+                 "metadata": json.loads(r["metadata"])}
+                for r in rows
             ]
             return {"dimension": self._dimension, "metric": self._metric, "vectors": vectors}
 
@@ -216,6 +247,22 @@ class Index:
     def _rank_hybrid(self, sims, text, alpha, top_k) -> list[tuple[int, float]]:
         candidate_k = max(top_k * 4, 50)
         vec = self._normalize({i: float(sims[i]) for i in range(len(self._ids))})
+        bm25 = self._normalize({
+            self._row_of[did]: s
+            for did, s in self._bm25.search(text, top_k=candidate_k)
+            if did in self._row_of
+        })
+        combined = {
+            i: alpha * vec.get(i, 0.0) + (1 - alpha) * bm25.get(i, 0.0)
+            for i in set(vec) | set(bm25)
+        }
+        return sorted(combined.items(), key=lambda kv: kv[1], reverse=True)
+
+    def _combine_hybrid_scores(self, vec_scores: dict, text, alpha) -> list[tuple[int, float]]:
+        """Blend pre-computed vector scores (row -> score) with BM25 (used by the
+        ANN backend, where vector candidates come from TurboVec rather than a matmul)."""
+        candidate_k = max(50, len(vec_scores))
+        vec = self._normalize(vec_scores)
         bm25 = self._normalize({
             self._row_of[did]: s
             for did, s in self._bm25.search(text, top_k=candidate_k)
@@ -265,6 +312,10 @@ class Index:
     def _meta_value(self, key: str) -> str:
         return self._db.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()["value"]
 
+    def _meta_value_or(self, key: str, default: str) -> str:
+        row = self._db.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+
     def _load_cache(self):
         """Build the in-memory mirror once, at open time."""
         rows = self._db.execute(
@@ -282,4 +333,13 @@ class Index:
             self._meta.append(meta)
             vecs.append(np.frombuffer(r["vector"], dtype=np.float32))
             self._bm25.add(r["id"], meta.get("text", ""))
-        self._matrix = np.vstack(vecs) if vecs else None
+
+        self._matrix = None
+        self._ann = None
+        if self._backend == "turbovec":
+            from vektoria.ann import TurboVecBackend
+            self._ann = TurboVecBackend(self._dimension, self._bit_width)
+            if vecs:
+                self._ann.add(np.vstack(vecs), list(range(len(vecs))))
+        else:
+            self._matrix = np.vstack(vecs) if vecs else None

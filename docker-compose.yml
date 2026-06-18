@@ -1,27 +1,23 @@
 services:
-  api:
+  vektoria:
     build: .
+    # Bound to localhost by default — reach it through an SSH tunnel
+    # (ssh -L 8000:localhost:8000 user@your-vps) or a TLS reverse proxy.
+    # For public exposure: change to "8000:8000" AND set VK_API_KEY below.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
-      - ./data:/app/data
+      - vektoria-data:/data
     environment:
-      - SVS_DATA_DIR=/app/data
-      - SVS_EMBED_BACKEND=ollama
-      - SVS_EMBED_MODEL=nomic-embed-text
-      - SVS_OLLAMA_URL=http://ollama:11434
-    depends_on:
-      - ollama
+      - VK_DATA_DIR=/data
+      # Require a Bearer API key on every /v1 route (recommended if exposed):
+      # - VK_API_KEY=change-me
+      # Scope CORS to your app's origin (never "*"):
+      # - VK_CORS_ORIGINS=https://app.example.com
+      # Server-side embedding for /ingest and text queries (ONNX, no torch):
+      - VK_EMBED_BACKEND=fastembed
+      - VK_EMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
     restart: unless-stopped
-
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    restart: unless-stopped
-    # After first start, run: docker exec ollama ollama pull nomic-embed-text
 
 volumes:
-  ollama_data:
+  vektoria-data:

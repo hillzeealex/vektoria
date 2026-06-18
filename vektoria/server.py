@@ -12,10 +12,12 @@ import os
 
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from vektoria import IndexManager
+from vektoria.dashboard import INDEX_HTML
 from vektoria.embedding import make_embedder
 from vektoria.ingest import Ingestor
 
@@ -31,7 +33,8 @@ def _embedder_from_env():
         return make_embedder("ollama", **kw)
     if backend == "hash":
         return make_embedder("hash", dimension=int(os.environ.get("VK_EMBED_DIM", "256")))
-    return make_embedder("sentence-transformers", **({"model_name": model} if model else {}))
+    # sentence-transformers (default) or fastembed (torch-free) — both take model_name
+    return make_embedder(backend, **({"model_name": model} if model else {}))
 
 
 class CreateIndexRequest(BaseModel):
@@ -113,6 +116,10 @@ def create_app(data_dir=None, api_key=None, cors_origins=None, embedder=None, ma
     @app.get("/health")
     def health():
         return {"status": "ok", "indexes": len(manager.list_indexes())}
+
+    @app.get("/dashboard", response_class=HTMLResponse)
+    def dashboard():
+        return INDEX_HTML
 
     @v1.post("/indexes", status_code=201)
     def create_index(req: CreateIndexRequest):

@@ -86,6 +86,12 @@ curl -X POST localhost:8000/v1/indexes/docs/query -d '{"text":"clause de résili
 
 Endpoints: `POST/GET/DELETE /v1/indexes`, `…/upsert`, `…/query`, `…/ingest`, `…/delete`, `…/export`, `GET /health`. Auth is an optional Bearer key; CORS origins are explicit (never `*`).
 
+There's also a **read-only dashboard** at `GET /dashboard` — browse your indexes and run a search playground. Keep it private by binding to localhost and reaching it through an SSH tunnel:
+
+```bash
+ssh -L 8000:localhost:8000 user@your-vps   # then open http://localhost:8000/dashboard
+```
+
 ## Benchmarks
 
 > Reproducible on your own machine — same vectors, same queries, recall@10 vs **exact** ground truth.
@@ -147,6 +153,23 @@ document (PDF/DOCX/…)  ─or─  raw vectors
    exact cosine  +  BM25  +  hybrid  +  filters
 ```
 
+## Scaling to millions of vectors
+
+Brute-force is exact and fast enough for most workloads (≤ ~1M vectors). Beyond that, the linear cost of exact search and the `float32` memory footprint start to bite. For those cases Vektoria can swap its vector backend for [TurboVec](https://github.com/RyanCodrai/turbovec) — a Rust ANN engine using 2–4-bit quantization — trading a little recall for large memory savings and sub-linear search.
+
+It's fully **opt-in** (the base install stays numpy-only):
+
+```bash
+pip install 'vektoria[ann]'
+```
+
+```python
+# choose the backend per index — brute-force stays the default
+mgr.create_index("huge", dimension=768, backend="turbovec")
+```
+
+Everything else is identical: the same `upsert` / `query` / `delete` / hybrid / filter API, SQLite remains the source of truth, and GDPR delete/export still work. The only difference is that search becomes **approximate** (recall < 100%). Reach for it only when you genuinely have millions of vectors — otherwise the exact default is simpler and just as fast.
+
 ## Self-host on your VPS
 
 **1. Get a VPS in Europe / Switzerland.** Any provider works — Infomaniak or Exoscale (🇨🇭), OVHcloud or Scaleway (🇪🇺). Minimum ~4 GB RAM; 8–16 GB if you embed documents server-side.
@@ -165,7 +188,11 @@ VK_DATA_DIR=/var/lib/vektoria VK_API_KEY=$(openssl rand -hex 16) vektoria serve 
 - Enable **full-disk encryption (LUKS)** on the VPS for data at rest, and put TLS (e.g. Caddy) in front.
 - Set `VK_API_KEY` for any non-localhost exposure; keep the data directory on the box only.
 
-**Coming soon:** `docker compose up -d` for one-command deployment.
+**Or one command with Docker:**
+```bash
+docker compose up -d      # builds the image, runs the API on 127.0.0.1:8000
+```
+The image ships the server, PDF ingestion, and a torch-free (ONNX) embedder, runs as a non-root user, and persists data in a named volume. Edit `docker-compose.yml` to set `VK_API_KEY` and expose it behind TLS for public access.
 
 ## Sovereignty & GDPR
 
@@ -177,9 +204,9 @@ Switzerland has its own data-protection law (nLPD/revFADP), benefits from an EU 
 - [x] **REST API** — clean `/v1/indexes` endpoints, optional API-key auth, scoped CORS
 - [x] **Document ingestion** — PDF/DOCX/TXT/MD/HTML/CSV → vectors, server-side, with text-query embedding
 - [x] **pip install** — `pip install vektoria` (extras: `[server]`, `[embeddings]`, `[embeddings-onnx]`, `[ingest]`, `[all]`) + `vektoria serve`
-- [ ] **Dashboard** — read-only console + search playground (via SSH tunnel)
-- [ ] **Docker** — one-command self-host deployment
-- [ ] **Scale backend** — optional [TurboVec](https://github.com/RyanCodrai/turbovec) ANN engine for very large indexes
+- [x] **Dashboard** — read-only console + search playground at `/dashboard`
+- [x] **Docker** — `docker compose up -d`, torch-free image, non-root, persistent volume
+- [x] **Scale backend** *(optional)* — [TurboVec](https://github.com/RyanCodrai/turbovec) ANN engine via `pip install vektoria[ann]` + per-index `backend="turbovec"` (brute-force stays the default)
 
 ## License
 

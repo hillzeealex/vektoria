@@ -2,169 +2,102 @@
 
 # ⬢ Vektoria
 
-### The European vector database. Self-hosted. Sovereign. Yours.
+**The sovereign European vector database.**
 
-**A Pinecone alternative you run on your own server — in Europe.**
-Your data never touches a US cloud. Ever.
+Exact vector search in **~2 ms at 100k vectors** (100% recall), hybrid keyword + semantic ranking, and **PDF-to-search built in** — running entirely on your own server. Not a single byte ever leaves your machine.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-00e5ff.svg)](LICENSE)
 [![GitHub](https://img.shields.io/badge/GitHub-hillzeealex%2Fvektoria-1f6feb.svg)](https://github.com/hillzeealex/vektoria)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-1f6feb.svg)](https://www.python.org/)
 [![Status: alpha](https://img.shields.io/badge/Status-alpha-a371f7.svg)](#roadmap)
-[![Made in 🇨🇭](https://img.shields.io/badge/Hosted_in-Switzerland-ff2e63.svg)](#why-sovereignty)
+[![Made in 🇨🇭](https://img.shields.io/badge/Hosted_in-Switzerland-ff2e63.svg)](#sovereignty--gdpr)
 
 </div>
 
 ---
 
-## Why Vektoria
+Building RAG or semantic search where **data sovereignty and GDPR matter**? You're in the right place. Vektoria is an open-source vector database you host yourself — on a Swiss, French, or German VPS — so legal, medical, financial, or strategic documents never transit a US cloud subject to the [CLOUD Act](https://en.wikipedia.org/wiki/CLOUD_Act).
 
-Most RAG stacks send your documents to US-based services — Pinecone, Weaviate Cloud, OpenAI. Every vector you store transits servers subject to the [CLOUD Act](https://en.wikipedia.org/wiki/CLOUD_Act), which lets US authorities access data held by American companies **even when the servers sit in Europe**.
+## Quickstart
 
-For a European or Swiss company handling legal, financial, medical, or strategic documents, that's a compliance problem (GDPR / nLPD) and a confidentiality problem.
+```bash
+pip install 'vektoria[ingest,embeddings-onnx]'
+```
 
-**Vektoria is the answer: a vector database you host yourself.** Deploy it on your own VPS — Swiss, French, German, wherever — and your data stays under your control. It's the kind of engine Pinecone runs internally, packaged as something *you* own.
-
-> **Vektoria = Pinecone, but you run it yourself, in Europe.**
-
-## Vektoria vs. Pinecone
-
-| | Pinecone | **Vektoria** |
-|---|---|---|
-| Hosting | US cloud (managed) | **Your own server** (self-hosted) |
-| Data sovereignty | ❌ Subject to CLOUD Act | ✅ **Stays on your infra** |
-| Vector search | ✅ | ✅ cosine (brute-force) |
-| Keyword + **hybrid** search | ❌ not native | ✅ **built-in BM25 + hybrid** |
-| Document ingestion (PDF→vectors) | ❌ bring your own | ✅ **server-side, optional** |
-| Metadata filters | ✅ | ✅ |
-| Right to erasure / export (GDPR) | partial | ✅ **real delete + export** |
-| License | Proprietary | **MIT, open source** |
-| Cost | Per-vector pricing | **Free — your hardware** |
-
-## Features
-
-- 🧠 **Vector search** — exact cosine similarity, no approximation surprises.
-- 🔎 **Hybrid search** — combine semantic vectors with BM25 keyword scoring (a differentiator Pinecone lacks natively).
-- 🏷️ **Metadata filters** — exact match, list membership, and more.
-- 📚 **Multi-index** — many independent indexes in one instance.
-- 📄 **Document ingestion** *(roadmap)* — send a PDF/DOCX, get it extracted, chunked, embedded, and stored, all server-side.
-- 🗑️ **GDPR-grade** — real deletion (right to erasure) and full export (portability).
-- 🔒 **Self-hosted** — one Docker command, your server, your rules.
-
-## Quickstart (Python core)
-
-> Vektoria is in **active development**. The core engine below works today; the REST API and Docker image are on the [roadmap](#roadmap).
+**Send a PDF, search it in natural language** — extraction, chunking and embedding happen on your machine:
 
 ```python
 from vektoria import IndexManager
+from vektoria.embedding import FastEmbedEmbedder
+from vektoria.ingest import Ingestor
 
-# One instance can hold many indexes
+emb = FastEmbedEmbedder("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 mgr = IndexManager("./data")
-mgr.create_index("contracts", dimension=384)
-
+mgr.create_index("contracts", dimension=emb.dimension)
 index = mgr.get("contracts")
 
-# Bring your own vectors (id, values, metadata — text lives in metadata)
+# extract → chunk → embed → store, all local
+Ingestor(emb).ingest(open("contrat.pdf", "rb").read(), "contrat.pdf", index)
+
+for hit in index.query(emb.embed_query("clause de résiliation"), top_k=3):
+    print(f"{hit.score:.2f}  {hit.metadata['text'][:80]}")
+```
+
+**Or bring your own vectors** — vector, keyword (BM25), and hybrid search, metadata filters, and GDPR primitives:
+
+```python
 index.upsert([
-    {"id": "c1", "values": embed("clause de non-concurrence"),
-     "metadata": {"text": "clause de non-concurrence", "source": "contrat.pdf"}},
-    {"id": "c2", "values": embed("clause de confidentialité"),
-     "metadata": {"text": "clause de confidentialité", "source": "contrat.pdf"}},
+    {"id": "c1", "values": my_vector, "metadata": {"text": "...", "source": "contrat.pdf"}},
 ])
 
-# Pure vector search
-hits = index.query(embed("non-concurrence"), top_k=5)
+# pure vector search
+index.query(query_vec, top_k=5)
 
-# Hybrid search (vector + BM25 keywords)
-hits = index.query(
-    embed("non-concurrence"), top_k=5,
-    hybrid=True, alpha=0.5, text="non-concurrence",
-)
+# hybrid: blend semantic vectors with BM25 keywords
+index.query(query_vec, top_k=5, hybrid=True, alpha=0.5, text="résiliation")
 
-# Metadata filter
-hits = index.query(embed("..."), top_k=5, filter={"source": "contrat.pdf"})
+# metadata filter
+index.query(query_vec, top_k=5, filter={"source": "contrat.pdf"})
 
-for h in hits:
-    print(f"{h.score:.3f}  {h.metadata['text']}")
-
-# GDPR: real erasure + export
+# GDPR: real erasure + full export
 index.delete(filter={"source": "contrat.pdf"})
 dump = index.export()
 ```
 
-## Architecture
+## REST API
 
-```
-        ┌──────────────────────────────────────────────┐
-        │  CLIENT                                       │
-        │   raw vectors  ──or──  documents (PDF/DOCX…)  │
-        └───────────────────────┬──────────────────────┘
-                                │  HTTP(S)
-        ┌───────────────────────▼──────────────────────┐
-        │  YOUR SERVER (Switzerland / EU)               │
-        │   REST API (roadmap) · optional API key       │
-        │   Ingestion: extract → chunk → embed          │
-        │   IndexManager (LRU cache of open indexes)    │
-        │   Per-index storage: SQLite (vectors as blobs)│
-        │   Search: cosine + BM25 + hybrid              │
-        └───────────────────────────────────────────────┘
-```
+A clean HTTP layer, for any language:
 
-One index = one directory with a single SQLite database as the source of truth. Vectors are L2-normalized on write and stored as float32 blobs alongside their metadata. No data ever leaves the box.
-
-## Self-host on your VPS
-
-> **Current state:** Vektoria ships today as a Python package + engine. The
-> one-command Docker image and REST API are on the [roadmap](#roadmap) — until
-> then you run it as a library on your own server.
-
-**1. Get a VPS in Europe / Switzerland.** Any provider works — Infomaniak or
-Exoscale (🇨🇭), OVHcloud or Scaleway (🇪🇺). Minimum ~4 GB RAM; 8–16 GB if you use
-server-side document embedding.
-
-**2. Install.**
 ```bash
-ssh user@your-vps
-sudo apt update && sudo apt install -y python3.11 python3.11-venv git
-git clone https://github.com/hillzeealex/vektoria.git
-cd vektoria
-python3.11 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python3 -m pytest tests/vektoria/ -q   # sanity check: 22 passing
+pip install 'vektoria[server]'
+vektoria serve --host 0.0.0.0 --port 8000      # optional auth: VK_API_KEY=… vektoria serve
 ```
 
-**3. Use it — your data stays on the box.**
-```python
-from vektoria import IndexManager
-
-mgr = IndexManager("/var/lib/vektoria")   # data dir on the VPS disk
-mgr.create_index("docs", dimension=384)
-mgr.get("docs").upsert([{"id": "1", "values": embed("…"), "metadata": {"text": "…"}}])
-```
-
-**4. Harden it (GDPR / art. 32).**
-- Enable **full-disk encryption (LUKS)** on the VPS for data at rest.
-- Keep the data directory on the VPS only — nothing leaves the machine.
-
-**Coming soon — one-command deploy:**
 ```bash
-docker compose up -d                      # REST API + optional API key (roadmap)
-ssh -L 8000:localhost:8000 user@your-vps  # reach the dashboard locally, no public port
+# create an index
+curl -X POST localhost:8000/v1/indexes -d '{"name":"docs","dimension":384}'
+
+# ingest a document (server-side extract → chunk → embed)
+curl -X POST localhost:8000/v1/indexes/docs/ingest -F "file=@contrat.pdf"
+
+# search in natural language (server embeds the query)
+curl -X POST localhost:8000/v1/indexes/docs/query -d '{"text":"clause de résiliation","top_k":3}'
 ```
+
+Endpoints: `POST/GET/DELETE /v1/indexes`, `…/upsert`, `…/query`, `…/ingest`, `…/delete`, `…/export`, `GET /health`. Auth is an optional Bearer key; CORS origins are explicit (never `*`).
 
 ## Benchmarks
 
-> Fully reproducible on your own machine — same vectors, same queries, recall@10
-> vs **exact** ground truth. Run `python benchmarks/bench_vs.py` then
-> `python benchmarks/plot.py` to regenerate everything below.
+> Reproducible on your own machine — same vectors, same queries, recall@10 vs **exact** ground truth.
+> Run `python benchmarks/bench_vs.py` then `python benchmarks/plot.py`.
 
-### Recall vs latency
+### Recall vs. latency
 
 <div align="center">
-<img src="assets/recall_vs_latency.png" alt="Recall vs latency: Vektoria ties FAISS-Flat and beats the cloud network hop" width="720" />
+<img src="assets/recall_vs_latency.png" alt="Recall vs query latency across engines" width="720" />
 </div>
 
-Vektoria's search is **exact** — 100% recall, no tuning — and it **ties FAISS-Flat** (Meta's C++) at ~0.26 ms: a pure-Python/numpy core matching the reference. The approximate engines (FAISS-HNSW, hnswlib, Chroma) shave microseconds but drop recall — low here because *random* vectors are a worst case for ANN; on real embeddings recall is much higher. Against **Pinecone, the self-hosted query is ~370× faster** (0.25 ms vs 92 ms) — not a smarter algorithm, just **no network hop**. That gap *is* the value of self-hosting.
+Vektoria's search is **exact** — 100% recall, no tuning — and **ties FAISS-Flat** (Meta's C++) at ~0.26 ms: a pure-Python/numpy core matching the reference. The approximate engines (FAISS-HNSW, hnswlib, Chroma) shave microseconds but drop recall — low here because *random* vectors are a worst case for ANN; on real embeddings recall is much higher. A hosted cloud service pays a network round-trip on every query (the rightmost point, ~92 ms); **self-hosting removes it entirely**.
 
 | engine | p50 latency | recall@10 | |
 |---|---:|---:|---|
@@ -179,7 +112,7 @@ Vektoria's search is **exact** — 100% recall, no tuning — and it **ties FAIS
 <img src="assets/local_engines.png" alt="Local engines latency and recall at 10k vectors" width="680" />
 </div>
 
-### Latency vs index size
+### Latency vs. index size
 
 <div align="center">
 <img src="assets/latency_scaling.png" alt="Exact query latency scales linearly with index size" width="700" />
@@ -194,24 +127,64 @@ Exact search is O(n): ~2 ms at 100k vectors, 100% recall, no network. Latency gr
 | 50,000  | 1.25 ms   | 1.99 ms   | 77 MB |
 | 100,000 | 2.11 ms   | 2.69 ms   | 154 MB |
 
+## How it works
+
+Each index is **a single SQLite database**. Vectors are L2-normalized on write and stored as `float32` blobs next to their JSON metadata, so the database is the one source of truth — no separate files to desync or corrupt.
+
+On open, Vektoria builds an in-memory numpy matrix, an id list, and a BM25 keyword index from that database. A query is **exact brute-force cosine** — a single matrix-vector product — optionally blended with BM25 for hybrid ranking, then filtered on metadata. Writes update the in-memory mirror **incrementally** (no full reload), and every operation is guarded by a per-index lock, so it is safe under the REST server's thread pool. Deletes really remove rows (GDPR erasure) and `export` dumps the whole index (portability).
+
+The core engine depends only on **numpy** — embedding models, PDF parsing, and the web server are opt-in extras, so the base install stays tiny.
+
+```
+document (PDF/DOCX/…)  ─or─  raw vectors
+            │
+   extract → chunk → embed            (local, optional)
+            │
+   IndexManager  ·  LRU cache of open indexes
+            │
+   per-index SQLite (float32 blobs + metadata)
+            │
+   exact cosine  +  BM25  +  hybrid  +  filters
+```
+
+## Self-host on your VPS
+
+**1. Get a VPS in Europe / Switzerland.** Any provider works — Infomaniak or Exoscale (🇨🇭), OVHcloud or Scaleway (🇪🇺). Minimum ~4 GB RAM; 8–16 GB if you embed documents server-side.
+
+**2. Install & run.**
+```bash
+ssh user@your-vps
+sudo apt update && sudo apt install -y python3.11 python3.11-venv git
+git clone https://github.com/hillzeealex/vektoria.git && cd vektoria
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -e '.[all]'
+VK_DATA_DIR=/var/lib/vektoria VK_API_KEY=$(openssl rand -hex 16) vektoria serve --host 0.0.0.0
+```
+
+**3. Harden it (GDPR / art. 32).**
+- Enable **full-disk encryption (LUKS)** on the VPS for data at rest, and put TLS (e.g. Caddy) in front.
+- Set `VK_API_KEY` for any non-localhost exposure; keep the data directory on the box only.
+
+**Coming soon:** `docker compose up -d` for one-command deployment.
+
+## Sovereignty & GDPR
+
+Switzerland has its own data-protection law (nLPD/revFADP), benefits from an EU adequacy decision, and is **not subject to the US CLOUD Act** — for many European customers an even stronger guarantee than hosting inside the EU. Self-hosting Vektoria takes it further: there is **no processor in the loop at all**. You are the sole controller of your data, and the engine ships GDPR primitives — real deletion (right to erasure) and full export (portability) — as first-class operations.
+
 ## Roadmap
 
 - [x] **Core engine** — multi-index storage, cosine + BM25 + hybrid search, metadata filters, real delete, export, LRU cache, thread-safe
-- [x] **REST API** — Pinecone-shaped `/v1/indexes` endpoints, optional API-key auth, scoped CORS
-- [x] **Document ingestion** — `POST /v1/indexes/{name}/ingest` (PDF/DOCX/TXT/MD/HTML/CSV → vectors, server-side) + text-query embedding
-- [x] **pip install** — `pip install vektoria` (extras: `[server]`, `[embeddings]`, `[ingest]`, `[all]`) + `vektoria serve`
+- [x] **REST API** — clean `/v1/indexes` endpoints, optional API-key auth, scoped CORS
+- [x] **Document ingestion** — PDF/DOCX/TXT/MD/HTML/CSV → vectors, server-side, with text-query embedding
+- [x] **pip install** — `pip install vektoria` (extras: `[server]`, `[embeddings]`, `[embeddings-onnx]`, `[ingest]`, `[all]`) + `vektoria serve`
 - [ ] **Dashboard** — read-only console + search playground (via SSH tunnel)
 - [ ] **Docker** — one-command self-host deployment
-- [ ] **Scale backend** — optional [TurboVec](https://github.com/RyanCodrai/turbovec) ANN engine for large indexes
-
-## Why sovereignty
-
-Switzerland has its own data-protection law (nLPD/revFADP), benefits from an EU adequacy decision, and is **not subject to the US CLOUD Act**. Hosting in Switzerland is, for many European customers, an even stronger guarantee than hosting inside the EU. Self-hosting Vektoria takes it further: there's no processor in the loop at all — you are the sole controller of your data.
+- [ ] **Scale backend** — optional [TurboVec](https://github.com/RyanCodrai/turbovec) ANN engine for very large indexes
 
 ## License
 
 [MIT](LICENSE) — free to use, modify, and self-host.
 
 <div align="center">
-<sub>Built for teams who refuse to send their data across the Atlantic.</sub>
+<sub>Built for teams who keep their data on their own side of the Atlantic.</sub>
 </div>

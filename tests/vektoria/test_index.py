@@ -111,3 +111,33 @@ def test_query_filters_by_list_membership(tmp_path):
     matches = idx.query(_vec(1, 0, 0), top_k=5, filter={"source": ["doc1", "doc3"]})
     assert sorted(m.id for m in matches) == ["a", "c"]
     idx.close()
+
+
+# append to tests/vektoria/test_index.py
+
+def test_delete_by_ids_removes_rows_and_vectors(tmp_path):
+    idx = Index.create(tmp_path / "i", dimension=3)
+    idx.upsert([
+        {"id": "a", "values": _vec(1, 0, 0), "metadata": {"text": "a"}},
+        {"id": "b", "values": _vec(0, 1, 0), "metadata": {"text": "b"}},
+    ])
+    deleted = idx.delete(ids=["a"])
+    assert deleted == 1
+    assert idx.count() == 1
+    matches = idx.query(_vec(1, 0, 0), top_k=5)
+    assert all(m.id != "a" for m in matches)
+    assert idx._matrix.shape[0] == 1
+    idx.close()
+
+
+def test_delete_by_filter(tmp_path):
+    idx = Index.create(tmp_path / "i", dimension=3)
+    idx.upsert([
+        {"id": "a", "values": _vec(1, 0, 0), "metadata": {"source": "doc1"}},
+        {"id": "b", "values": _vec(0, 1, 0), "metadata": {"source": "doc1"}},
+        {"id": "c", "values": _vec(0, 0, 1), "metadata": {"source": "doc2"}},
+    ])
+    deleted = idx.delete(filter={"source": "doc1"})
+    assert deleted == 2
+    assert idx.count() == 1
+    idx.close()

@@ -104,6 +104,27 @@ class Index:
         self._load_cache()  # rebuild matrix + ids + bm25 from DB (source of truth)
         return len(items)
 
+    def delete(self, ids: list[str] | None = None, filter: dict | None = None) -> int:
+        if not ids and not filter:
+            return 0
+
+        target_ids: set[str] = set(ids or [])
+        if filter:
+            rows = self._db.execute("SELECT id, metadata FROM vectors").fetchall()
+            for r in rows:
+                if self._matches_filter(json.loads(r["metadata"]), filter):
+                    target_ids.add(r["id"])
+
+        if not target_ids:
+            return 0
+
+        self._db.executemany(
+            "DELETE FROM vectors WHERE id = ?", [(i,) for i in target_ids]
+        )
+        self._db.commit()
+        self._load_cache()  # rebuild from DB → no orphaned vectors survive
+        return len(target_ids)
+
     def _row_metadata(self, vector_id: str) -> dict:
         row = self._db.execute(
             "SELECT metadata FROM vectors WHERE id = ?", (vector_id,)

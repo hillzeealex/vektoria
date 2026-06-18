@@ -10,7 +10,9 @@ or, when omitted, from environment variables:
 
 import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, APIRouter
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 from vektoria import IndexManager
@@ -58,6 +60,24 @@ def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
     app.state.manager = manager
     app.state.api_key = api_key
 
+    if cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+    bearer = HTTPBearer(auto_error=False)
+
+    def require_key(creds: HTTPAuthorizationCredentials = Depends(bearer)):
+        if not api_key:
+            return  # auth disabled
+        if creds is None or creds.credentials != api_key:
+            raise HTTPException(401, "Missing or invalid API key")
+
+    v1 = APIRouter(prefix="/v1", dependencies=[Depends(require_key)])
+
     def _get_index(name: str):
         try:
             return manager.get(name)
@@ -68,7 +88,7 @@ def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
     def health():
         return {"status": "ok", "indexes": len(manager.list_indexes())}
 
-    @app.post("/v1/indexes", status_code=201)
+    @v1.post("/indexes", status_code=201)
     def create_index(req: CreateIndexRequest):
         try:
             manager.create_index(req.name, dimension=req.dimension, metric=req.metric)
@@ -79,11 +99,11 @@ def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
             raise HTTPException(400, msg)
         return {"name": req.name, "dimension": req.dimension, "metric": req.metric}
 
-    @app.get("/v1/indexes")
+    @v1.get("/indexes")
     def list_indexes():
         return {"indexes": manager.list_indexes()}
 
-    @app.delete("/v1/indexes/{name}")
+    @v1.delete("/indexes/{name}")
     def delete_index(name: str):
         try:
             manager.delete_index(name)
@@ -93,7 +113,7 @@ def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
             raise HTTPException(400, str(e))
         return {"deleted": name}
 
-    @app.post("/v1/indexes/{name}/upsert")
+    @v1.post("/indexes/{name}/upsert")
     def upsert(name: str, req: UpsertRequest):
         index = _get_index(name)
         items = [{"id": v.id, "values": v.values, "metadata": v.metadata} for v in req.vectors]
@@ -103,7 +123,7 @@ def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
             raise HTTPException(400, str(e))
         return {"upserted": n}
 
-    @app.post("/v1/indexes/{name}/query")
+    @v1.post("/indexes/{name}/query")
     def query(name: str, req: QueryRequest):
         index = _get_index(name)
         try:
@@ -117,15 +137,16 @@ def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
             {"id": m.id, "score": m.score, "metadata": m.metadata} for m in matches
         ]}
 
-    @app.post("/v1/indexes/{name}/delete")
+    @v1.post("/indexes/{name}/delete")
     def delete_vectors(name: str, req: DeleteVectorsRequest):
         index = _get_index(name)
         n = index.delete(ids=req.ids, filter=req.filter)
         return {"deleted": n}
 
-    @app.get("/v1/indexes/{name}/export")
+    @v1.get("/indexes/{name}/export")
     def export(name: str):
         index = _get_index(name)
         return index.export()
 
+    app.include_router(v1)
     return app

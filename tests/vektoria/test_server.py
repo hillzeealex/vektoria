@@ -142,3 +142,23 @@ def test_export_returns_dump(tmp_path):
 def test_export_missing_index_404(tmp_path):
     c = _client(tmp_path)
     assert c.get("/v1/indexes/nope/export").status_code == 404
+
+
+def test_auth_required_when_key_set(tmp_path):
+    c = _client(tmp_path, api_key="secret")
+    assert c.get("/health").status_code == 200  # health stays open
+    assert c.get("/v1/indexes").status_code == 401  # no key
+    assert c.get("/v1/indexes", headers={"Authorization": "Bearer nope"}).status_code == 401
+    ok = c.get("/v1/indexes", headers={"Authorization": "Bearer secret"})
+    assert ok.status_code == 200
+
+
+def test_no_auth_when_key_unset(tmp_path):
+    c = _client(tmp_path)  # no api_key
+    assert c.get("/v1/indexes").status_code == 200
+
+
+def test_cors_origin_allowed_when_configured(tmp_path):
+    c = _client(tmp_path, cors_origins=["https://app.example.com"])
+    r = c.get("/health", headers={"Origin": "https://app.example.com"})
+    assert r.headers.get("access-control-allow-origin") == "https://app.example.com"

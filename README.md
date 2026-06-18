@@ -165,7 +165,11 @@ VK_DATA_DIR=/var/lib/vektoria VK_API_KEY=$(openssl rand -hex 16) vektoria serve 
 - Enable **full-disk encryption (LUKS)** on the VPS for data at rest, and put TLS (e.g. Caddy) in front.
 - Set `VK_API_KEY` for any non-localhost exposure; keep the data directory on the box only.
 
-**Coming soon:** `docker compose up -d` for one-command deployment.
+**Or one command with Docker:**
+```bash
+docker compose up -d      # builds the image, runs the API on 127.0.0.1:8000
+```
+The image ships the server, PDF ingestion, and a torch-free (ONNX) embedder, runs as a non-root user, and persists data in a named volume. Edit `docker-compose.yml` to set `VK_API_KEY` and expose it behind TLS for public access.
 
 ## Sovereignty & GDPR
 
@@ -178,7 +182,7 @@ Switzerland has its own data-protection law (nLPD/revFADP), benefits from an EU 
 - [x] **Document ingestion** — PDF/DOCX/TXT/MD/HTML/CSV → vectors, server-side, with text-query embedding
 - [x] **pip install** — `pip install vektoria` (extras: `[server]`, `[embeddings]`, `[embeddings-onnx]`, `[ingest]`, `[all]`) + `vektoria serve`
 - [ ] **Dashboard** — read-only console + search playground (via SSH tunnel)
-- [ ] **Docker** — one-command self-host deployment
+- [x] **Docker** — `docker compose up -d`, torch-free image, non-root, persistent volume
 - [ ] **Scale backend** — optional [TurboVec](https://github.com/RyanCodrai/turbovec) ANN engine for very large indexes
 
 ## License

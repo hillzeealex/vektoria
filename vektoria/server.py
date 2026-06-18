@@ -31,7 +31,8 @@ def _embedder_from_env():
         return make_embedder("ollama", **kw)
     if backend == "hash":
         return make_embedder("hash", dimension=int(os.environ.get("VK_EMBED_DIM", "256")))
-    return make_embedder("sentence-transformers", **({"model_name": model} if model else {}))
+    # sentence-transformers (default) or fastembed (torch-free) — both take model_name
+    return make_embedder(backend, **({"model_name": model} if model else {}))
 
 
 class CreateIndexRequest(BaseModel):

@@ -152,6 +152,19 @@ docker compose up -d                      # REST API + optional API key (roadmap
 ssh -L 8000:localhost:8000 user@your-vps  # reach the dashboard locally, no public port
 ```
 
+## Benchmark
+
+Vektoria's search is **exact** brute-force cosine — recall is always 100%, no tuning. Measured on one machine (dim=384, run `python benchmarks/bench_engine.py`):
+
+| vectors | query p50 | query p95 | RAM |
+|--------:|----------:|----------:|----:|
+| 1,000   | 0.08 ms   | 0.12 ms   | 2 MB |
+| 10,000  | 0.27 ms   | 0.44 ms   | 15 MB |
+| 50,000  | 1.25 ms   | 1.99 ms   | 77 MB |
+| 100,000 | 2.11 ms   | 2.69 ms   | 154 MB |
+
+At 100k vectors an exact query is ~2 ms **locally** — no network hop, 100% recall (Pinecone is ~50–200 ms over the wire). Latency grows linearly with size: that's the honest cost of exactness. Past ~1M vectors an approximate backend ([TurboVec](https://github.com/RyanCodrai/turbovec), Rust) would flatten the curve; until then, brute-force is simpler and fast enough.
+
 ## Roadmap
 
 - [x] **Core engine** — multi-index storage, cosine + BM25 + hybrid search, metadata filters, real delete, export, LRU cache, thread-safe

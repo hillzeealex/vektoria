@@ -137,12 +137,47 @@ class OllamaEmbedder:
         return _l2(np.asarray(self._embed_raw(text), dtype=np.float32))
 
 
+class FastEmbedEmbedder:
+    """Torch-free local embeddings via fastembed (ONNX runtime).
+
+    Useful when PyTorch isn't available or you want a lighter footprint. For e5
+    models the ``query:`` / ``passage:`` prefixes are applied automatically;
+    other models get no prefix (override if needed).
+    """
+
+    def __init__(
+        self,
+        model_name: str = "intfloat/multilingual-e5-large",
+        *,
+        query_prefix: str | None = None,
+        passage_prefix: str | None = None,
+    ):
+        from fastembed import TextEmbedding
+
+        self._model = TextEmbedding(model_name=model_name)
+        is_e5 = "e5" in model_name.lower()
+        self.query_prefix = query_prefix if query_prefix is not None else ("query: " if is_e5 else "")
+        self.passage_prefix = passage_prefix if passage_prefix is not None else ("passage: " if is_e5 else "")
+        self.dimension = len(next(iter(self._model.embed(["probe"]))))
+
+    def embed_documents(self, texts: list[str]) -> np.ndarray:
+        if not texts:
+            return np.zeros((0, self.dimension), dtype=np.float32)
+        vecs = list(self._model.embed([self.passage_prefix + t for t in texts]))
+        return _l2(np.asarray(vecs, dtype=np.float32))
+
+    def embed_query(self, text: str) -> np.ndarray:
+        vec = next(iter(self._model.embed([self.query_prefix + text])))
+        return _l2(np.asarray(vec, dtype=np.float32))
+
+
 def make_embedder(backend: str, **kwargs) -> Embedder:
-    """Construct an embedder by backend name: 'hash', 'sentence-transformers', 'ollama'."""
+    """Construct an embedder by backend name: 'hash', 'sentence-transformers', 'ollama', 'fastembed'."""
     backends = {
         "hash": HashEmbedder,
         "sentence-transformers": SentenceTransformerEmbedder,
         "ollama": OllamaEmbedder,
+        "fastembed": FastEmbedEmbedder,
     }
     if backend not in backends:
         raise ValueError(f"Unknown embedding backend {backend!r}; choose from {sorted(backends)}")

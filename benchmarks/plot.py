@@ -92,10 +92,19 @@ def chart_tradeoff():
                     color=FG, fontsize=10.5, fontweight="bold" if vk else "normal", zorder=4)
 
     ax.set_xscale("log")
-    ax.set_xlabel("query latency  (ms, log scale) — lower is better →")
-    ax.set_ylabel("recall@10  (%) — higher is better ↑")
+    ax.set_xlabel("← faster          query latency  (ms, log scale)          slower →")
+    ax.set_ylabel("recall@10  (%)          more accurate ↑")
     ax.set_ylim(45, 105)
     ax.set_title("Recall vs. query latency — 10,000 vectors", loc="left")
+    ax.text(0.0, 1.012, "Each dot is an engine · top-left (fast + accurate) wins",
+            transform=ax.transAxes, color=MUTED, fontsize=9.5)
+
+    # arrow pointing from open space up at the winning (top-left) cluster
+    ax.annotate("fast + accurate\n= best", xy=(0.115, 0.93), xytext=(0.34, 0.80),
+                xycoords="axes fraction", textcoords="axes fraction",
+                color=EXACT, fontsize=10.5, fontweight="bold", ha="center", va="center",
+                arrowprops=dict(arrowstyle="-|>", color=EXACT, lw=2,
+                                connectionstyle="arc3,rad=-0.2"))
 
     handles = [Line2D([0], [0], marker="o", linestyle="", markersize=9,
                       markerfacecolor=CAT_COLOR[c], markeredgecolor="none", label=CAT_LABEL[c])

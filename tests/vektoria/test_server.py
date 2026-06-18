@@ -110,3 +110,35 @@ def test_query_missing_index_404(tmp_path):
     c = _client(tmp_path)
     r = c.post("/v1/indexes/nope/query", json={"vector": [1, 0, 0]})
     assert r.status_code == 404
+
+
+def test_delete_vectors_by_filter(tmp_path):
+    c = _client(tmp_path)
+    c.post("/v1/indexes", json={"name": "docs", "dimension": 3})
+    c.post("/v1/indexes/docs/upsert", json={"vectors": [
+        {"id": "a", "values": [1, 0, 0], "metadata": {"source": "s1"}},
+        {"id": "b", "values": [0, 1, 0], "metadata": {"source": "s1"}},
+        {"id": "c", "values": [0, 0, 1], "metadata": {"source": "s2"}},
+    ]})
+    r = c.post("/v1/indexes/docs/delete", json={"filter": {"source": "s1"}})
+    assert r.status_code == 200
+    assert r.json()["deleted"] == 2
+    assert c.get("/v1/indexes").json()["indexes"][0]["count"] == 1
+
+
+def test_export_returns_dump(tmp_path):
+    c = _client(tmp_path)
+    c.post("/v1/indexes", json={"name": "docs", "dimension": 3})
+    c.post("/v1/indexes/docs/upsert", json={"vectors": [
+        {"id": "a", "values": [1, 0, 0], "metadata": {"text": "alpha"}},
+    ]})
+    r = c.get("/v1/indexes/docs/export")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["dimension"] == 3 and len(body["vectors"]) == 1
+    assert body["vectors"][0]["id"] == "a"
+
+
+def test_export_missing_index_404(tmp_path):
+    c = _client(tmp_path)
+    assert c.get("/v1/indexes/nope/export").status_code == 404

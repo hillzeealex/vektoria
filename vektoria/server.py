@@ -41,6 +41,11 @@ class QueryRequest(BaseModel):
     text: str | None = None
 
 
+class DeleteVectorsRequest(BaseModel):
+    ids: list[str] | None = None
+    filter: dict | None = None
+
+
 def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
     data_dir = data_dir if data_dir is not None else os.environ.get("VK_DATA_DIR", "./data")
     api_key = api_key if api_key is not None else os.environ.get("VK_API_KEY")
@@ -111,5 +116,16 @@ def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
         return {"matches": [
             {"id": m.id, "score": m.score, "metadata": m.metadata} for m in matches
         ]}
+
+    @app.post("/v1/indexes/{name}/delete")
+    def delete_vectors(name: str, req: DeleteVectorsRequest):
+        index = _get_index(name)
+        n = index.delete(ids=req.ids, filter=req.filter)
+        return {"deleted": n}
+
+    @app.get("/v1/indexes/{name}/export")
+    def export(name: str):
+        index = _get_index(name)
+        return index.export()
 
     return app

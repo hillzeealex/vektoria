@@ -86,6 +86,12 @@ curl -X POST localhost:8000/v1/indexes/docs/query -d '{"text":"clause de résili
 
 Endpoints: `POST/GET/DELETE /v1/indexes`, `…/upsert`, `…/query`, `…/ingest`, `…/delete`, `…/export`, `GET /health`. Auth is an optional Bearer key; CORS origins are explicit (never `*`).
 
+There's also a **read-only dashboard** at `GET /dashboard` — browse your indexes and run a search playground. Keep it private by binding to localhost and reaching it through an SSH tunnel:
+
+```bash
+ssh -L 8000:localhost:8000 user@your-vps   # then open http://localhost:8000/dashboard
+```
+
 ## Benchmarks
 
 > Reproducible on your own machine — same vectors, same queries, recall@10 vs **exact** ground truth.
@@ -181,7 +187,7 @@ Switzerland has its own data-protection law (nLPD/revFADP), benefits from an EU 
 - [x] **REST API** — clean `/v1/indexes` endpoints, optional API-key auth, scoped CORS
 - [x] **Document ingestion** — PDF/DOCX/TXT/MD/HTML/CSV → vectors, server-side, with text-query embedding
 - [x] **pip install** — `pip install vektoria` (extras: `[server]`, `[embeddings]`, `[embeddings-onnx]`, `[ingest]`, `[all]`) + `vektoria serve`
-- [ ] **Dashboard** — read-only console + search playground (via SSH tunnel)
+- [x] **Dashboard** — read-only console + search playground at `/dashboard`
 - [x] **Docker** — `docker compose up -d`, torch-free image, non-root, persistent volume
 - [ ] **Scale backend** — optional [TurboVec](https://github.com/RyanCodrai/turbovec) ANN engine for very large indexes
 

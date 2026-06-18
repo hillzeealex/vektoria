@@ -206,3 +206,17 @@ def test_ingest_dimension_mismatch_400(tmp_path):
     c.post("/v1/indexes", json={"name": "docs", "dimension": 8})  # != embedder 32
     r = c.post("/v1/indexes/docs/ingest", files={"file": ("a.txt", b"hello world", "text/plain")})
     assert r.status_code == 400
+
+
+# ── dashboard ────────────────────────────────────────────────────────
+def test_dashboard_served(tmp_path):
+    c = _client(tmp_path)
+    r = c.get("/dashboard")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert "Vektoria" in r.text and "Search playground" in r.text
+
+
+def test_dashboard_open_even_with_api_key(tmp_path):
+    c = _client(tmp_path, api_key="secret")
+    assert c.get("/dashboard").status_code == 200  # dashboard page itself is open

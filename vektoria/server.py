@@ -12,10 +12,12 @@ import os
 
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from vektoria import IndexManager
+from vektoria.dashboard import INDEX_HTML
 from vektoria.embedding import make_embedder
 from vektoria.ingest import Ingestor
 
@@ -114,6 +116,10 @@ def create_app(data_dir=None, api_key=None, cors_origins=None, embedder=None, ma
     @app.get("/health")
     def health():
         return {"status": "ok", "indexes": len(manager.list_indexes())}
+
+    @app.get("/dashboard", response_class=HTMLResponse)
+    def dashboard():
+        return INDEX_HTML
 
     @v1.post("/indexes", status_code=201)
     def create_index(req: CreateIndexRequest):

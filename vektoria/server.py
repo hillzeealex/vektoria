@@ -57,8 +57,6 @@ def create_app(data_dir=None, api_key=None, cors_origins=None) -> FastAPI:
 
     manager = IndexManager(data_dir)
     app = FastAPI(title="Vektoria", version="1.0.0")
-    app.state.manager = manager
-    app.state.api_key = api_key
 
     if cors_origins:
         app.add_middleware(

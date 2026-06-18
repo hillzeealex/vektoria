@@ -35,15 +35,13 @@ class IndexManager:
         Index.create(path, dimension=dimension, metric=metric).close()
 
     def list_indexes(self) -> list[dict]:
+        # Read summaries directly — don't route through get(), which would load
+        # every index's vectors and churn the LRU cache just to list them.
         out = []
         for path in sorted(self.data_dir.iterdir()):
             if not (path / "index.db").exists():
                 continue
-            idx = self.get(path.name)
-            out.append(
-                {"name": path.name, "dimension": idx.dimension,
-                 "metric": idx.metric, "count": idx.count()}
-            )
+            out.append({"name": path.name, **Index.stat(path)})
         return out
 
     def get(self, name: str) -> Index:

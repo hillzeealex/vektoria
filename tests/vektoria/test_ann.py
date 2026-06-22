@@ -6,6 +6,7 @@ import pytest
 pytest.importorskip("turbovec")
 
 from vektoria import Index, IndexManager
+from vektoria.ann import TurboVecBackend
 
 
 def _orthogonalish(n, dim, rng):
@@ -18,7 +19,8 @@ def test_turbovec_create_persists_backend(tmp_path):
     idx = Index.create(tmp_path / "i", dimension=8, backend="turbovec")
     idx.close()
     re = Index(tmp_path / "i")          # reopen reads backend from meta
-    assert re._backend == "turbovec" and re._ann is not None
+    assert re._backend_name == "turbovec"
+    assert isinstance(re._backend, TurboVecBackend)
     re.close()
 
 

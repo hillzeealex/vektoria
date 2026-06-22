@@ -27,7 +27,7 @@ def test_incremental_upsert_across_batches(tmp_path):
     idx.upsert([{"id": f"a{i}", "values": _v(1, 0, 0), "metadata": {}} for i in range(5)])
     idx.upsert([{"id": f"b{i}", "values": _v(0, 1, 0), "metadata": {}} for i in range(5)])
     assert idx.count() == 10
-    assert idx._matrix.shape == (10, 3)
+    assert idx._backend._matrix.shape == (10, 3)
     assert len(idx.export()["vectors"]) == 10
     idx.close()
 

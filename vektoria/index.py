@@ -23,6 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
+from vektoria.backends import make_backend
 from vektoria.bm25 import BM25Index
 
 SUPPORTED_METRICS = {"cosine"}
@@ -48,7 +49,7 @@ class Index:
         self._db.row_factory = sqlite3.Row
         self._dimension = int(self._meta_value("dimension"))
         self._metric = self._meta_value("metric")
-        self._backend = self._meta_value_or("backend", "bruteforce")
+        self._backend_name = self._meta_value_or("backend", "bruteforce")
         self._bit_width = int(self._meta_value_or("bit_width", "4"))
         self._load_cache()
 
@@ -140,8 +141,6 @@ class Index:
             for rid, v, m in prepared:
                 if rid in self._row_of:                 # in-place replace, O(1)
                     i = self._row_of[rid]
-                    if self._matrix is not None:
-                        self._matrix[i] = v
                     self._meta[i] = m
                     self._bm25.remove(rid)
                     replaced.append((i, v))
@@ -153,15 +152,10 @@ class Index:
                     appended_vecs.append(v)
                 self._bm25.add(rid, m.get("text", ""))
 
-            if self._ann is not None:
-                for row, v in replaced:
-                    self._ann.remove(row)
-                    self._ann.add(v.reshape(1, -1), [row])
-                if appended_vecs:
-                    self._ann.add(np.vstack(appended_vecs), appended_rows)
-            elif appended_vecs:
-                block = np.vstack(appended_vecs)
-                self._matrix = block if self._matrix is None else np.vstack([self._matrix, block])
+            for row, v in replaced:
+                self._backend.replace(row, v)
+            if appended_vecs:
+                self._backend.add(np.vstack(appended_vecs), appended_rows)
         return len(items)
 
     def delete(self, ids: list[str] | None = None, filter: dict | None = None) -> int:
@@ -180,13 +174,8 @@ class Index:
             self._db.executemany("DELETE FROM vectors WHERE id = ?", [(i,) for i in targets])
             self._db.commit()
 
-            if self._ann is not None:
-                # row ids compact after a delete → rebuild the ANN index from disk
-                self._load_cache()
-                return len(targets)
-
             keep = [i for i, rid in enumerate(self._ids) if rid not in targets]
-            self._matrix = self._matrix[keep] if keep else None
+            self._backend.keep_rows(keep, self._reload_vectors)
             self._ids = [self._ids[i] for i in keep]
             self._meta = [self._meta[i] for i in keep]
             self._row_of = {rid: n for n, rid in enumerate(self._ids)}
@@ -211,14 +200,11 @@ class Index:
                 return []
             q = np.asarray(vector, dtype=np.float32)
             q = q / (np.linalg.norm(q) + _EPS)
-            if self._ann is not None:                    # approximate (TurboVec)
-                cand = self._ann.search(q, max(top_k * 4, 50))
-                ordered = self._combine_hybrid_scores(dict(cand), text, alpha) \
-                    if hybrid else cand
-            else:                                         # exact brute-force
-                sims = self._matrix @ q  # cosine: rows and query are unit vectors
-                ordered = self._rank_hybrid(sims, text, alpha, top_k) if hybrid \
-                    else self._rank_vector(sims, top_k, bool(filter))
+            if hybrid:
+                vec_scores = self._backend.candidate_scores(q, max(top_k * 4, 50))
+                ordered = self._fuse(vec_scores, text, alpha, top_k)
+            else:
+                ordered = self._backend.search(q, top_k, filtered=bool(filter))
             return self._assemble(ordered, top_k, filter)
 
     def export(self) -> dict:
@@ -235,33 +221,10 @@ class Index:
             return {"dimension": self._dimension, "metric": self._metric, "vectors": vectors}
 
     # ── ranking helpers (assume the lock is held) ────────────────────
-    def _rank_vector(self, sims, top_k, filtered) -> list[tuple[int, float]]:
-        fetch_k = top_k * 4 if filtered else top_k
-        if len(sims) <= fetch_k:
-            idxs = np.argsort(sims)[::-1]
-        else:
-            part = np.argpartition(sims, -fetch_k)[-fetch_k:]
-            idxs = part[np.argsort(sims[part])[::-1]]
-        return [(int(i), float(sims[i])) for i in idxs]
-
-    def _rank_hybrid(self, sims, text, alpha, top_k) -> list[tuple[int, float]]:
+    def _fuse(self, vec_scores: dict, text, alpha, top_k) -> list[tuple[int, float]]:
+        """Blend backend vector scores (row -> score) with BM25 keyword scores.
+        Both query paths hand the same row->score shape here, so fusion lives once."""
         candidate_k = max(top_k * 4, 50)
-        vec = self._normalize({i: float(sims[i]) for i in range(len(self._ids))})
-        bm25 = self._normalize({
-            self._row_of[did]: s
-            for did, s in self._bm25.search(text, top_k=candidate_k)
-            if did in self._row_of
-        })
-        combined = {
-            i: alpha * vec.get(i, 0.0) + (1 - alpha) * bm25.get(i, 0.0)
-            for i in set(vec) | set(bm25)
-        }
-        return sorted(combined.items(), key=lambda kv: kv[1], reverse=True)
-
-    def _combine_hybrid_scores(self, vec_scores: dict, text, alpha) -> list[tuple[int, float]]:
-        """Blend pre-computed vector scores (row -> score) with BM25 (used by the
-        ANN backend, where vector candidates come from TurboVec rather than a matmul)."""
-        candidate_k = max(50, len(vec_scores))
         vec = self._normalize(vec_scores)
         bm25 = self._normalize({
             self._row_of[did]: s
@@ -334,12 +297,14 @@ class Index:
             vecs.append(np.frombuffer(r["vector"], dtype=np.float32))
             self._bm25.add(r["id"], meta.get("text", ""))
 
-        self._matrix = None
-        self._ann = None
-        if self._backend == "turbovec":
-            from vektoria.ann import TurboVecBackend
-            self._ann = TurboVecBackend(self._dimension, self._bit_width)
-            if vecs:
-                self._ann.add(np.vstack(vecs), list(range(len(vecs))))
-        else:
-            self._matrix = np.vstack(vecs) if vecs else None
+        matrix = np.vstack(vecs) if vecs else None
+        self._backend = make_backend(
+            self._backend_name, self._dimension, self._bit_width, matrix
+        )
+
+    def _reload_vectors(self) -> np.ndarray:
+        """Surviving vectors from disk, in row order — for a backend rebuild after a delete."""
+        rows = self._db.execute("SELECT vector FROM vectors ORDER BY rowid").fetchall()
+        if not rows:
+            return np.empty((0, self._dimension), dtype=np.float32)
+        return np.vstack([np.frombuffer(r["vector"], dtype=np.float32) for r in rows])

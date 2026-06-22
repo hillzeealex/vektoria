@@ -45,7 +45,7 @@ def test_upsert_stores_and_counts(tmp_path):
 def test_upsert_normalizes_vectors(tmp_path):
     idx = Index.create(tmp_path / "i", dimension=3)
     idx.upsert([{"id": "a", "values": _vec(3, 4, 0), "metadata": {}}])  # norm 5
-    stored = idx._matrix[0]
+    stored = idx._backend._matrix[0]
     assert np.isclose(np.linalg.norm(stored), 1.0, atol=1e-5)
     assert np.allclose(stored, [0.6, 0.8, 0.0], atol=1e-5)
     idx.close()
@@ -126,7 +126,7 @@ def test_delete_by_ids_removes_rows_and_vectors(tmp_path):
     assert idx.count() == 1
     matches = idx.query(_vec(1, 0, 0), top_k=5)
     assert all(m.id != "a" for m in matches)
-    assert idx._matrix.shape[0] == 1
+    assert idx._backend._matrix.shape[0] == 1
     idx.close()
 
 

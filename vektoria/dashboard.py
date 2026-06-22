@@ -72,6 +72,18 @@ INDEX_HTML = r"""<!DOCTYPE html>
 <script>
   let selected = null;
   const $ = id => document.getElementById(id);
+
+  // Index data (ids, sources, chunk text) is attacker-supplied via upsert/ingest,
+  // so it's rendered through textContent / DOM nodes — never innerHTML — and can't
+  // inject markup. The same goes for server error messages, which echo ids back.
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const note = (target, cls, text) => $(target).replaceChildren(el("span", cls, text));
+
   const headers = () => {
     const h = { "Content-Type": "application/json" };
     const k = $("apikey").value.trim();
@@ -79,44 +91,51 @@ INDEX_HTML = r"""<!DOCTYPE html>
     return h;
   };
 
+  function renderIndex(ix) {
+    const d = el("div", "idx");
+    d.append(el("div", "name", ix.name),
+             el("div", "meta", `${ix.count} vectors · dim ${ix.dimension} · ${ix.metric}`));
+    d.onclick = () => {
+      selected = ix.name;
+      document.querySelectorAll(".idx").forEach(x => x.classList.remove("sel"));
+      d.classList.add("sel");
+    };
+    return d;
+  }
+
+  function renderHit(m) {
+    const top = el("div", "top");
+    top.append(el("span", null, m.id), el("span", "score", m.score.toFixed(3)));
+    const hit = el("div", "hit");
+    hit.append(top, el("div", "text", (m.metadata.text || "").slice(0, 400)));
+    if (m.metadata.source) hit.append(el("div", "src", "source: " + m.metadata.source));
+    return hit;
+  }
+
   async function loadIndexes() {
     try {
       const r = await fetch("v1/indexes", { headers: headers() });
       if (!r.ok) throw new Error("HTTP " + r.status);
       const { indexes } = await r.json();
-      const el = $("indexes");
-      if (!indexes.length) { el.innerHTML = '<span class="empty">No indexes yet.</span>'; return; }
-      el.innerHTML = "";
-      indexes.forEach(ix => {
-        const d = document.createElement("div");
-        d.className = "idx";
-        d.innerHTML = `<div class="name">${ix.name}</div>
-          <div class="meta">${ix.count} vectors · dim ${ix.dimension} · ${ix.metric}</div>`;
-        d.onclick = () => { selected = ix.name; document.querySelectorAll(".idx").forEach(x => x.classList.remove("sel")); d.classList.add("sel"); };
-        el.appendChild(d);
-      });
-    } catch (e) { $("indexes").innerHTML = '<span class="err">' + e.message + '</span>'; }
+      if (!indexes.length) return note("indexes", "empty", "No indexes yet.");
+      $("indexes").replaceChildren(...indexes.map(renderIndex));
+    } catch (e) { note("indexes", "err", e.message); }
   }
 
   async function runSearch() {
-    if (!selected) { $("results").innerHTML = '<span class="err">Select an index first.</span>'; return; }
+    if (!selected) return note("results", "err", "Select an index first.");
     const q = $("q").value.trim();
     if (!q) return;
-    $("results").innerHTML = '<span class="empty">searching…</span>';
+    note("results", "empty", "searching…");
     try {
       const r = await fetch("v1/indexes/" + encodeURIComponent(selected) + "/query",
         { method: "POST", headers: headers(), body: JSON.stringify({ text: q, top_k: 10 }) });
       const body = await r.json();
       if (!r.ok) throw new Error(body.detail || ("HTTP " + r.status));
       const { matches } = body;
-      if (!matches.length) { $("results").innerHTML = '<span class="empty">No matches.</span>'; return; }
-      $("results").innerHTML = matches.map(m => `
-        <div class="hit">
-          <div class="top"><span>${m.id}</span><span class="score">${m.score.toFixed(3)}</span></div>
-          <div class="text">${(m.metadata.text || "").replace(/</g,"&lt;").slice(0,400)}</div>
-          ${m.metadata.source ? '<div class="src">source: ' + m.metadata.source + '</div>' : ''}
-        </div>`).join("");
-    } catch (e) { $("results").innerHTML = '<span class="err">' + e.message + '</span>'; }
+      if (!matches.length) return note("results", "empty", "No matches.");
+      $("results").replaceChildren(...matches.map(renderHit));
+    } catch (e) { note("results", "err", e.message); }
   }
 
   $("q").addEventListener("keydown", e => { if (e.key === "Enter") runSearch(); });
